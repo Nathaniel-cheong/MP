@@ -1,4 +1,5 @@
-DB Host: https://dashboard.render.com/d/dpg-d0r91k2dbo4c73a4kip0-a/info
+DB Hosting Site: https://dashboard.render.com/d/dpg-d0r91k2dbo4c73a4kip0-a/info
 
-Vids:
+
+Videos:
 Setting up Render + Registering DB on Local pgadmin4: https://www.youtube.com/watch?v=k77P2-pCZDI
