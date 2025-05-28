@@ -4,3 +4,4 @@ Vid on Setting up Render + Registering DB on Local pgadmin4: https://www.youtube
 
 For deploying streamlit site: https://share.streamlit.io/
 Vid on how to deploy site: https://www.youtube.com/watch?v=JL9xOs-G1hI
+Get requirements of libraries for deployment: pipreqs streamlit_site  
