@@ -6,3 +6,4 @@ Pillow==11.2.1
 SQLAlchemy==1.4.39
 streamlit==1.44.1
 numpy==1.25.2
+psycopg2-binary==2.9.10
