@@ -23,7 +23,7 @@ database = "tpmpams"
 DATABASE_URL = f"postgresql://{username}:{password}@{host}:{port}/{database}"
 # Create engine
 engine = create_engine(DATABASE_URL)
-
+#add new commentS
 # --- YAMAHA DATA EXTRACTION ---
 def extract_pdf_id(pdf_path, brand):
     base_filename = os.path.basename(pdf_path).split('.')[0]
