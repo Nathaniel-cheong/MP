@@ -1,53 +1,69 @@
-from imports import *
+# views/view_images.py
+
+from imports import *              # should bring in: engine, sessionmaker, etc.
+import streamlit as st
+from sqlalchemy import Table, MetaData
+from sqlalchemy.orm import sessionmaker
+from PIL import Image
+from io import BytesIO
+import base64
 
 st.title("View Images")
 
+# —– Create a session —–
 Session = sessionmaker(bind=engine)
 session = Session()
 
+# —– Reflect just the parts_images table —–
 metadata = MetaData()
 parts_images = Table('parts_images', metadata, autoload_with=engine)
 
-pdf_ids = session.query(parts_images.c.pdf_id).distinct().order_by(parts_images.c.pdf_id).all()
-pdf_ids = [row[0] for row in pdf_ids]  # Flatten list of tuples
+# —– Fetch distinct PDF IDs to populate the selectbox —–
+pdf_ids = (
+    session.query(parts_images.c.pdf_id)
+    .distinct()
+    .order_by(parts_images.c.pdf_id)
+    .all()
+)
+pdf_ids = [row[0] for row in pdf_ids]
 
 selected_pdf_id = st.selectbox("Select a PDF ID", pdf_ids)
 
-# Step 4: Query and display images only for selected PDF ID
-if selected_pdf_id:
-    results = session.execute(
-        parts_images.select()
-        .where(parts_images.c.pdf_id == selected_pdf_id)
-        .with_only_columns(
+if selected_pdf_id is not None:
+    # Build a SELECT that only pulls the three columns we need
+    stmt = (
+        parts_images
+        .select()  # SELECT * FROM parts_images
+        .with_only_columns([
             parts_images.c.pdf_id,
             parts_images.c.section,
             parts_images.c.image
-        )
-    ).fetchall()
+        ])
+        .where(parts_images.c.pdf_id == selected_pdf_id)
+    )
 
-    image_data = []
-    for row in results:
-        pdf_id, section, image_binary = row
-        image = Image.open(BytesIO(image_binary))
-        image_data.append({'pdf_id': pdf_id, 'section': section, 'image': image})
+    results = session.execute(stmt).fetchall()
 
-    # Step 5: Display images in rows of 5 using base64 HTML for speed
     render_blocks = []
-    for item in image_data:
+    for pdf_id, section, image_binary in results:
+        img = Image.open(BytesIO(image_binary))
         buf = BytesIO()
-        item['image'].save(buf, format='PNG')
-        img_base64 = base64.b64encode(buf.getvalue()).decode()
-        html_block = f"""
-            <div style="text-align: center; margin: 0px;">
-                <img src="data:image/png;base64,{img_base64}" height="200"/>
-                <p style="font-size: small;">PDF ID: {item['pdf_id']}<br>Section: {item['section']}</p>
-            </div>
-        """
-        render_blocks.append(html_block)
+        img.save(buf, format='PNG')
+        img_b64 = base64.b64encode(buf.getvalue()).decode()
 
+        render_blocks.append(f"""
+            <div style="text-align:center; margin:0;">
+              <img src="data:image/png;base64,{img_b64}" height="200"/>
+              <p style="font-size:small;">
+                PDF ID: {pdf_id}<br/>Section: {section}
+              </p>
+            </div>
+        """)
+
+    # Layout the images in rows of 5 columns
     rows = [render_blocks[i:i + 5] for i in range(0, len(render_blocks), 5)]
     for row in rows:
         cols = st.columns(5)
-        for i, block in enumerate(row):
-            with cols[i]:
+        for col, block in zip(cols, row):
+            with col:
                 st.markdown(block, unsafe_allow_html=True)
