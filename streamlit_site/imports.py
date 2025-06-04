@@ -5,11 +5,13 @@ import streamlit as st
 import pandas as pd
 import pdfplumber
 import fitz  # PyMuPDF
+import pickle
+
 # For Image Display within the df
 from IPython.display import Image
 from PIL import Image, ImageOps
 from io import BytesIO
-#AHAHAHAHAHHAHAHAHAgit
+
 # --- DATABASE SETUP ---
 from sqlalchemy import (select, create_engine, text, Table, Column, Integer, String, MetaData, ForeignKey, LargeBinary)
 from sqlalchemy.orm import sessionmaker
