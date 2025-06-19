@@ -1,135 +1,147 @@
-# Make form values persist
 from imports import *
 
 st.title("Manual Imports")
 
-# Sidebar
+def display_image_previews(image_data, title="📸 Preview: Parts Images"):
+    st.subheader(title)
+    rows = [image_data[i:i + 6] for i in range(0, len(image_data), 6)]
+    for row in rows:
+        cols = st.columns(6)
+        for i, item in enumerate(row):
+            image = Image.open(BytesIO(item['image']))
+            with cols[i]:
+                st.image(
+                    image,
+                    caption=f"PDF ID: {item['pdf_id']}\nSection: {item['section']}",
+                    use_container_width=True
+                )
+
+# Sidebar info
 st.sidebar.markdown("""
 **For Your Infomation**
 - a
 - b
 """)
 
-# Set default value if session key doesn't exist
+# Select Brand
 brand_options = ["Select a Brand", "Yamaha", "Honda"]
-default_brand = st.session_state.get("brand", "Select a Brand")
-brand = st.selectbox(
-    "Brand:",
-    brand_options, 
-    index=brand_options.index(default_brand), 
-    key="brand"
-)
+brand = st.selectbox("Brand:", brand_options)
 
 if brand == "Select a Brand":
     st.warning("Please select a brand.")
     st.stop()
 
-else:
-    # File Upload
-    uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
-    if uploaded_file is None:
-        st.warning("Please upload a PDF file.")
-        st.stop()
+# File Upload
+uploaded_file = st.file_uploader("Upload a PDF file", type="pdf", key="file")
+if uploaded_file is None:
+    st.warning("Please upload a PDF file.")
+    st.stop()
 
-    else:
-        # Process the file
-        filename = uploaded_file.name
+# Extract filename-based defaults
+filename = uploaded_file.name
+pdf_id_default = extract_pdf_id(filename, brand)
+year_default = extract_year(filename, brand)
+model_default = extract_model(filename, brand)
 
-        # Extract values
-        pdf_id = extract_pdf_id(filename, brand)
-        year = extract_year(filename, brand)
-        model = extract_model(filename, brand)
+st.subheader("Data Preview")
+st.info("Please review all form fields. \nAll values were auto-filled from the file name and may require correction.")
 
-        st.subheader("Data Preview")
+# --- Form ---
+with st.form("pdf_metadata_form"):
+    pdf_id = st.text_input("PDF ID:", value=pdf_id_default, key="pdf_id")
+    year = st.text_input("Year:", value=year_default, key="year")
+    model = st.text_input("Bike Models (Separate each model with a comma E.g. B65P, B65R, B65S):",
+                          value=model_default, key="model")
 
-        # Form Fields
-        pdf_id = st.text_input("PDF ID:", value=pdf_id, disabled=True)
+    num_model_parts = len([m for m in model_default.split(",") if m.strip()])
+    num_model = st.number_input("Number of Bike Model:", value=num_model_parts, step=1, key="num_model")
 
-        year = st.text_input("Year:", value=year)
-        if year and not re.fullmatch(r"\d{4}", year):
-            st.error("Year must be a 4-digit number.")
+    preview_clicked = st.form_submit_button("Preview Data")
 
-        else:
-            model = st.text_input("Bike Models (Separate each model with a comma E.g. B65P, B65R, B65S):", value=model)
+# --- Attempt to load cache for current file ---
+df_parts = load_from_cache(f"{filename}_master_parts_list.pkl")
+df_images = load_from_cache(f"{filename}_parts_images.pkl")
+image_preview = load_from_cache(f"{filename}_image_previews.pkl")
 
-            # Validate model input
-            num_model_parts = len([m for m in model.split(",") if m.strip()])
-            num_model = st.number_input("Number of Bike Model:", value=num_model_parts, step=1)
+if not preview_clicked and df_parts is not None and df_images is not None and image_preview is not None:
+    st.success(f"✅ Session restored with data for `{filename}`.")
 
-            # Enable preview button only if form is filled
-            form_filled = all([pdf_id, year, model.strip(), num_model])
-            preview_clicked = st.button("Preview Data", disabled=not form_filled)
+    st.subheader("master_parts_list table (Restored):")
+    st.data_editor(df_parts, use_container_width=True)
 
-            if preview_clicked:
-                file_bytes = uploaded_file.read()
-                file_stream = BytesIO(file_bytes)
+    st.subheader("parts_images table (Restored):")
+    st.dataframe(df_images, use_container_width=True)
 
-                with st.status("Structuring Data...", expanded=True) as status:
-                    # ----------- Process master_parts_list -----------
-                    if brand == "Yamaha":
-                        raw_text_data = extract_text_from_pdf(file_stream)
-                        df_parts = yamaha_process_data(raw_text_data, pdf_id, year, model, num_model)
+    display_image_previews(image_preview, title="📸 Preview: Parts Images (Restored)")
 
-                        if not df_parts.empty:
-                            st.write("master_parts_list table:")
-                            st.dataframe(df_parts, use_container_width=True)
-                            status.update(label="master_parts_list structured, sturcturing parts_images.", state="running")
-                        else:
-                            status.update(label="No parts data found in the PDF.", state="error")
-                            st.stop()
+# --- On Submit ---
+if preview_clicked:
+    if not re.fullmatch(r"\d{4}", year):
+        st.error("Year must be a 4-digit number.")
+        st.stop() # Remove this
 
-                    elif brand == "Honda":
-                        st.info("Honda Structuring Logic (Parts List)")
-                        status.update(label="Honda master_parts_list processed.", state="running")
+    file_bytes = uploaded_file.read()
+    file_stream = BytesIO(file_bytes)
 
-                    # ----------- Process parts_images -----------
-                    if brand == "Yamaha":
-                        st.write("parts_images table:")
+    with st.status("Structuring master_parts_list", expanded=True) as status:
+        # ----------- master_parts_list -----------
+        if brand == "Yamaha":
+            raw_text_data = extract_text_from_pdf(file_stream)
+            df_parts = yamaha_process_data(raw_text_data, pdf_id, year, model, num_model)
 
-                        file_stream.seek(0)
-                        df_images = extract_images_with_fig_labels(file_stream, pdf_id, engine)
-                        st.dataframe(df_images, use_container_width=True)
+            if not df_parts.empty:
+                st.write("master_parts_list table:")
+                st.data_editor(df_parts, use_container_width=True)
+                save_to_cache(df_parts, f"{filename}_master_parts_list.pkl")
+                status.update(label="master_parts_list structured. Now structuring parts_images...", state="running")
+            else:
+                status.update(label="No parts data found in the PDF.", state="error")
 
-                        if not df_images.empty:
-                            st.subheader("📸 Preview: Parts Images")
+        elif brand == "Honda":
+            st.info("Honda Structuring Logic (Parts List)")
+            df_parts = pd.DataFrame()
+            status.update(label="Honda master_parts_list processed.", state="complete")
 
-                            image_data = []
-                            for _, row in df_images.iterrows():
-                                image_data.append({
-                                    'pdf_id': row['pdf_id'],
-                                    'section': row['section'],
-                                    'image': row['image']
-                                })
+        # ----------- parts_images -----------
+        if brand == "Yamaha":
+            st.write("parts_images table:")
+            file_stream.seek(0)
+            df_images = extract_images_with_fig_labels(file_stream, pdf_id, engine)
+            st.dataframe(df_images, use_container_width=True)
+            save_to_cache(df_images, f"{filename}_parts_images.pkl")
 
-                            # Convert images to base64 for fast HTML rendering
-                            render_blocks = []
-                            for item in image_data:
-                                image = Image.open(BytesIO(item['image']))  # Convert bytes to PIL Image
-                                buf = BytesIO()
-                                image.save(buf, format='PNG')
-                                img_base64 = base64.b64encode(buf.getvalue()).decode()
-                                html_block = f"""
-                                    <div style="text-align: center; margin: 0px;">
-                                        <img src="data:image/png;base64,{img_base64}" height="200"/>
-                                        <p style="font-size: small;">PDF ID: {item['pdf_id']}<br>Section: {item['section']}</p>
-                                    </div>
-                                """
-                                render_blocks.append(html_block)
+            if not df_images.empty:
+                st.subheader("📸 Preview: Parts Images")
 
-                            # Display in rows of 5
-                            rows = [render_blocks[i:i + 5] for i in range(0, len(render_blocks), 5)]
-                            for row in rows:
-                                cols = st.columns(5)
-                                for i, block in enumerate(row):
-                                    with cols[i]:
-                                        st.markdown(block, unsafe_allow_html=True)
-                        else:
-                            st.warning("No new parts images found.")
+                image_preview = []
+                for _, row in df_images.iterrows():
+                    image_preview.append({
+                        'pdf_id': row['pdf_id'],
+                        'section': row['section'],
+                        'image': row['image']
+                    })
 
-                        status.update(label="Data structuring completed.", state="complete")
+                display_image_previews(image_preview)
+                save_to_cache(image_preview, f"{filename}_image_previews.pkl")
 
-                    elif brand == "Honda":
-                        st.info("Honda Structuring Logic (Parts Images)")
-                        status.update(label="Honda parts_images processed.", state="complete")
+            else:
+                st.warning("No new parts images found.")
 
-                upload_button = st.button("Upload to Database", help="Currently does nothing")
+            status.update(label="Data structuring completed.", state="complete")
+
+        elif brand == "Honda":
+            st.info("Honda Structuring Logic (Parts Images)")
+            df_images = pd.DataFrame()
+            image_preview = []
+            status.update(label="Honda parts_images processed.", state="complete")
+    
+    st.subheader("Any Changes")
+    updated_table = st.file_uploader("Upload Updated Table", type="csv", key="updated_table")
+
+# --- Upload to DB and Clear Cache Button ---
+if st.button("Upload to Database"):
+    for fname in os.listdir(CACHE_DIR):
+        if fname.startswith(f"{filename}_"):
+            os.remove(os.path.join(CACHE_DIR, fname))
+    
+    st.success("Data successfully uploaded.")

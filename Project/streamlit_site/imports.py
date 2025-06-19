@@ -12,7 +12,7 @@ from PIL import Image, ImageOps
 from io import BytesIO
 
 # --- DATABASE SETUP ---
-from sqlalchemy import (select, update, delete, create_engine, text, Table, Column, Integer, String, MetaData, ForeignKey, LargeBinary)
+from sqlalchemy import (select, update, delete, distinct, create_engine, text, Table, Column, Integer, String, MetaData, ForeignKey, LargeBinary)
 from sqlalchemy.orm import sessionmaker # currently only being used in view_images.py and MP jupyter files
 username = "tpmpams_user"
 password = "X5Lx2fWLXQ18cxaEngOODl3gXtMq7H8f"
@@ -177,7 +177,8 @@ def extract_images_with_fig_labels(pdf_stream, pdf_id, engine):
 
         section = matches[0]
         #if section in seen_figs or section in existing_figs:
-            #continue
+        if section in seen_figs:
+            continue
 
         image_list = page.get_images(full=True)
         if not image_list:
@@ -201,7 +202,7 @@ def extract_images_with_fig_labels(pdf_stream, pdf_id, engine):
 
 # --- CACHE ---
 import pickle
-CACHE_DIR = "cache"
+CACHE_DIR = "streamlit_site\cache"
 # Ensure the cache directory exists
 os.makedirs(CACHE_DIR, exist_ok=True)
 def save_to_cache(obj, filename):
@@ -213,3 +214,13 @@ def load_from_cache(filename):
             return pickle.load(f)
     except (FileNotFoundError, EOFError):
         return None
+
+import time    
+def clear_old_cache_files(directory, max_age_seconds=86400):  # 1 Day = 86400
+    now = time.time()
+    for filename in os.listdir(directory):
+        file_path = os.path.join(directory, filename)
+        if os.path.isfile(file_path):
+            file_age = now - os.path.getmtime(file_path)
+            if file_age > max_age_seconds:
+                os.remove(file_path)

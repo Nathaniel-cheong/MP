@@ -1,9 +1,12 @@
 from imports import *
 
+st.set_page_config(layout="wide")
+clear_old_cache_files(CACHE_DIR)
+
 # --- PAGE SETUP ---
 signin_page = st.Page(
     page="views/signin.py",
-    title="Sign In",
+    title="Staff Sign In",
     icon="👤",
 )
 
@@ -41,7 +44,7 @@ dashbaord_2_page = st.Page(
 )
 test_page = st.Page(
     page="views/test.py",
-    title="Testing/Experiment Page",
+    title="Testing Page",
 )
 
 # Default to Sign In navigation
