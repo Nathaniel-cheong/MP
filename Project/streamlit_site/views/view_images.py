@@ -1,4 +1,4 @@
-from imports import *
+from Project.streamlit_site.imports_old import *
 
 st.title("View Images")
 

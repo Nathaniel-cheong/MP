@@ -34,9 +34,10 @@ if pdf_log_table is not None:
                 time_str = ts.strftime("%H:%M")
                 st.write(f"**PDF ID:** {row['pdf_id']}  \n**Date:** {date_str}  \n**Time:** {time_str}")
                 
-            with edit_button_con:
+            with edit_button_con:       
                 if st.button(f"Edit Details #{row['pdf_id']}", key=f"edit_{row['pdf_id']}"):
-                    st.write("Edit pdf details code logic here:")
+                    st.query_params.update({"pdf_id": row['pdf_id']})
+                    st.switch_page("views/manual_import.py")
 
             with delete_button_con:
                 delete_key = f"delete_{row['pdf_id']}"
