@@ -74,6 +74,8 @@ class PDFProcessor:
         self.batch_id = batch_id
         self.image = image
 
+        self.pdf_section_df = None
+
     def get_pdf_info(self):
         return pd.DataFrame([{
             "pdf_id": self.pdf_id,
@@ -81,9 +83,18 @@ class PDFProcessor:
             "year": self.year,
             "model": self.model,
             "batch_id": self.batch_id,
-            "image": self.image
+            "bike_image": self.image
         }])
     
+    def extract_pdf_log(self, account_id):
+        return pd.DataFrame([{
+            "pdf_id": self.pdf_id,
+            "account_id": account_id,
+            "timestamp": datetime.now().isoformat(),
+            "is_active": 0,
+            "is_current": 1
+        }])
+
     @staticmethod
     def normalize_image_background(image_bytes):
         img = Image.open(BytesIO(image_bytes)).convert("L")  # Grayscale
@@ -214,10 +225,10 @@ class YamahaProcessor(PDFProcessor):
             # FIG. section headers
             if line[0] == "FIG." and len(line) >= 3:
                 section = line[1]
+                print(line)
 
                 raw_name = " ".join(line[2:])  # Full raw name with possible number
-                # Remove trailing digits from component name
-                s_name = re.sub(r"\s*\d+$", "", raw_name).strip()
+                s_name = raw_name.strip()  # Just strip leading/trailing spaces
 
                 prev_section, prev_c_name = section, s_name
                 continue
@@ -286,35 +297,52 @@ class YamahaProcessor(PDFProcessor):
             base_image = doc.extract_image(xref)
             image = self.normalize_image_background(base_image["image"])
 
-            image_id = f"{self.pdf_id}_{section}"
+            section_id = f"{self.pdf_id}_{section}"
 
             data.append({
-                "image_id": image_id,
+                "section_id": section_id,
                 "pdf_id": self.pdf_id,
-                "section": section,
-                "image": image
+                "section_image": image
             })
             seen_figs.add(section)
 
         return pd.DataFrame(data)
     
-    def extract_text(self):
+    def extract_master_parts_list(self):
         raw_lines = self.extract_raw_text()
         structured_data = self.structure_raw_text(raw_lines)
         df = self.convert_to_table(
             pdf_id=self.pdf_id,
             structured_output=structured_data
         )
-        # 'part_no', 'description', 'ref_no', 'add_info', 'section_id', 'section', 'section_name', 'pdf_id'
-        
-        final_mpl_df = df[['part_no', 'description', 'ref_no', 'add_info', 'section_id', 'pdf_id']]
-        pdf_section_df = df[['section_id', 'section', 'section_name']]
 
-        return df
+        mpl_df = df[['part_no', 'description', 'ref_no', 'add_info', 'section_id', 'pdf_id']]
+        pdf_section_df = df[['section_id', 'section_no', 'section_name', 'pdf_id']].drop_duplicates().reset_index(drop=True)
+        self.pdf_section_df = pdf_section_df
 
-    def extract_images(self):
-        df = self.yamaha_extract_images_with_fig_labels()
-        return df
+        print(mpl_df)
+        print(pdf_section_df)
+
+        return mpl_df
+
+    def extract_pdf_section(self):
+        image_df = self.yamaha_extract_images_with_fig_labels()
+
+        merged_df = pd.merge(
+            self.pdf_section_df,
+            image_df,
+            on=["section_id", "pdf_id"],
+            how="inner"  # use "left" if you want to keep all rows from section_df
+        )
+
+        # Add 'cc' column as empty string
+        merged_df["cc"] = ""
+
+        # Optional: Reorder columns
+        final_columns = ['section_id', 'section_no', 'section_name', 'cc', 'section_image', 'pdf_id']
+        merged_df = merged_df[final_columns]
+
+        return merged_df
 
 class HondaProcessor(PDFProcessor):
     @staticmethod
@@ -603,16 +631,18 @@ class HondaProcessor(PDFProcessor):
             _flush(current)
 
         final_df = pd.DataFrame({
-            'pdf_id': pdf_id,       #added
+            'pdf_id': pdf_id,       
             'part_no':      part_nos,
             'description':  descriptions,
-            'section':   section_nos,
+            'section_no':   section_nos,
             'section_name': section_names,
             'ref_no':       ref_nos,
-            'remarks':      remarks_list,
+            'add_info':      remarks_list,
         })
-        final_df["image_id"] = final_df["pdf_id"] + "_" + final_df["section"]
-        return final_df
+        final_df["section_id"] = final_df["pdf_id"] + "_" + final_df["section_no"]
+        final_df[['part_no', 'description', 'ref_no', 'add_info', 'section_id', 'section_no', 'section_name', 'pdf_id']]
+
+        return final_df 
     
     def honda_extract_images_with_fig_labels(self):
         doc = fitz.open(stream=self.pdf_stream, filetype="pdf")
@@ -675,13 +705,12 @@ class HondaProcessor(PDFProcessor):
                 base_image = doc.extract_image(xref)
                 image = self.normalize_image_background(base_image["image"])
 
-                image_id = f"{self.pdf_id}_{section}"
+                section_id = f"{self.pdf_id}_{section}"
 
                 data.append({
-                    "image_id": image_id,
+                    "section_id": section_id,
                     "pdf_id": self.pdf_id,
-                    "section": section,
-                    "image": image
+                    "section_image": image
                 })
 
                 # # For debug: display the section + image
@@ -692,16 +721,38 @@ class HondaProcessor(PDFProcessor):
 
         return pd.DataFrame(data)
 
-    def extract_text(self):
+    def extract_master_parts_list(self):
         df = self.extract_all_sections_one_pass(
             pdf_id=self.pdf_id,
             pdf_stream=self.pdf_stream
         )
-        return df
 
-    def extract_images(self):
-        df = self.honda_extract_images_with_fig_labels()
-        return df
+        mpl_df = df[['part_no', 'description', 'ref_no', 'add_info', 'section_id', 'pdf_id']]
+        pdf_section_df = df[['section_id', 'section_no', 'section_name', 'pdf_id']].drop_duplicates().reset_index(drop=True)
+        self.pdf_section_df = pdf_section_df
+
+        print(mpl_df)
+        print(pdf_section_df)
+
+        return mpl_df
+    
+    def extract_pdf_section(self):
+        image_df = self.honda_extract_images_with_fig_labels()
+        merged_df = pd.merge(
+            self.pdf_section_df,
+            image_df,
+            on=["section_id", "pdf_id"],
+            how="inner"  # use "left" if you want to keep all rows from section_df
+        )
+
+        # Add 'cc' column as empty string
+        merged_df["cc"] = ""
+
+        # Optional: Reorder columns
+        final_columns = ['section_id', 'section_no', 'section_name', 'cc', 'section_image', 'pdf_id']
+        merged_df = merged_df[final_columns]
+
+        return merged_df
 
 def display_image_previews(df, title, brand):
     st.subheader(title)
@@ -717,7 +768,7 @@ def display_image_previews(df, title, brand):
             with cols[i]:
                 st.image(
                     image,
-                    caption=f"Section: {item['section']}",
+                    caption=f"Section: {item['section_no']}",
                     use_container_width=True
                 )
 

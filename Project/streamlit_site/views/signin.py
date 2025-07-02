@@ -15,5 +15,11 @@ if st.button("Staff: Bob"):
     st.success("Signed in as Staff")
     st.rerun()
 
+if st.button("Admin: Admin"):
+    st.session_state.user_type = "admin"
+    st.session_state.user_name = "admin"
+    st.success("Signed in as Admin")
+    st.rerun()
+
 if st.session_state.user_type:
     st.info(f"Current user type: **{st.session_state.user_type.capitalize()}**")

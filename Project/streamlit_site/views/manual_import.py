@@ -1,148 +1,184 @@
-# Without session state, makes page reload and lose all data after changes
+# if choose wrong brand to process pdf, pdf will be empty and pdf_section extraction will have error as missing data at 'section_id'
+# add error handling and pdf_edit through csv import
 from imports import *
-
-def advanced_display_image_previews(image_data, title, brand):
-    st.subheader(title)
-
-    if brand == "Honda": # Long Images
-        num_cols = 5
-    elif brand == "Yamaha": # Tall Images
-        num_cols = 6
-
-    # Pagination settings
-    rows_per_page = 2  # show 2 rows at a time
-    total_rows = (len(image_data) + num_cols - 1) // num_cols  # total rows of images
-    total_pages = (total_rows + rows_per_page - 1) // rows_per_page
-
-    # Init page number in session state
-    if "image_page" not in st.session_state:
-        st.session_state.image_page = 0
-
-    # Calculate which rows to show
-    start_row = st.session_state.image_page * rows_per_page
-    end_row = start_row + rows_per_page
-
-    # Slice image data
-    rows = [image_data[i:i + num_cols] for i in range(0, len(image_data), num_cols)]
-    rows_to_show = rows[start_row:end_row]
-
-    # Display images
-    for row in rows_to_show:
-        cols = st.columns(num_cols)
-        for i, item in enumerate(row):
-            image = Image.open(BytesIO(item['image']))
-            with cols[i]:
-                st.image(
-                    image,
-                    caption=f"PDF ID: {item['pdf_id']}\nSection: {item['section']}",
-                    use_container_width=True
-                )
-
-    # --- Navigation buttons at the bottom ---
-    st.markdown("---")  # horizontal line
-
-    # Show current page info
-    st.write(f"Page {st.session_state.image_page + 1} of {total_pages}")
-
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col1:
-        if st.button("⬅️ Back", key="image_back", disabled=(st.session_state.image_page == 0)):
-            st.session_state.image_page -= 1
-
-    with col3:
-        if st.button("Next ➡️", key="image_next", disabled=(st.session_state.image_page >= total_pages - 1)):
-            st.session_state.image_page += 1
-
 
 st.title("Manual Imports")
 
-# Sidebar info
+# --- Init ---
+if "file_states" not in st.session_state:
+    st.session_state["file_states"] = {}
+
+if "uploaded_filename" not in st.session_state:
+    st.session_state["uploaded_filename"] = ""
+
+# --- UI Sidebar ---
 st.sidebar.markdown("""
 **For More Infomation**
--         
+-
 """)
 
-mpl_df = image_df = image_preview = None
+# --- File Upload ---
+uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
 
-# File Upload
-uploaded_file = st.file_uploader("Upload a PDF file", type="pdf", key="file")
 if uploaded_file is None:
     st.warning("Please upload a PDF file.")
     st.stop()
 
-# Brand Dropdown Selection
-brand_options = ["Select a Brand", "Yamaha", "Honda"]
-brand = st.selectbox("Brand:", brand_options)
+filename = uploaded_file.name
+is_new_file = filename != st.session_state["uploaded_filename"]
 
-if brand == "Select a Brand":
+if is_new_file:
+    st.session_state["uploaded_filename"] = filename
+    st.session_state["file_states"][filename] = {
+        "brand": "Select a Brand",
+        "uploaded_file": uploaded_file,
+        "model": extract_model(filename),
+        "batch_id": "",
+        "year": "",
+        "preview_clicked": False,
+        "pdf_id": "",
+        "mpl_df": None,
+        "pdf_section_df": None,
+        "pdf_log": None
+    }
+
+file_state = st.session_state["file_states"][filename]
+
+# --- Brand Select ---
+brand_options = ["Select a Brand", "Yamaha", "Honda"]
+
+# Init previous brand if missing
+if "previous_brand" not in file_state:
+    file_state["previous_brand"] = "Select a Brand"
+
+# Use session_state key to detect change 
+if "brand_select" not in st.session_state:
+    st.session_state.brand_select = file_state["brand"]
+
+current_brand = st.selectbox("Brand:", brand_options, key="brand_select")
+
+if current_brand == "Select a Brand":
     st.warning("Please select a brand.")
     st.stop()
 
-# Extract filename-based defaults
-filename = uploaded_file.name
-model_default = extract_model(filename)
-batch_id_default = extract_batch_id(filename, brand)
-year_default = extract_year(filename, brand)
+# If brand changed → reset fields 
+if st.session_state.brand_select != file_state["previous_brand"]:
+    file_state["brand"] = st.session_state.brand_select
+    file_state["batch_id"] = extract_batch_id(filename, file_state["brand"])
+    file_state["year"] = extract_year(filename, file_state["brand"])
+    file_state["model"] = extract_model(filename)
+    file_state["previous_brand"] = st.session_state.brand_select
+    file_state["preview_clicked"] = False
+    
+    file_state['mpl_df'] = None
+    file_state['pdf_section_df'] = None
+    file_state['pdf_log'] = None
+    file_state['pdf_info'] = None
 
+# --- FORM (page variables) ---
 st.subheader("Data Preview")
-st.info("Please review all form fields. All values were auto-filled from the file name and may require correction.")
+st.info("Please review all form fields. All values were auto-filled from the file name or loaded from previous session and may require correction.")
 
-# Form
-model = st.text_input("Model:", value=model_default, key="model")
-batch_id = st.text_input("Batch ID:", value=batch_id_default, key="batch_id")
-year = st.text_input("Year:", value=year_default, key="year")
+form_model = st.text_input("Model:", value=file_state["model"])
+form_batch_id = st.text_input("Batch ID:", value=file_state["batch_id"])
+form_year = st.text_input("Year:", value=file_state["year"])
 
-form_filled = all([str(model).strip(), str(batch_id).strip(), str(year).strip()])
+form_filled = all([
+    str(form_model).strip(),
+    str(form_batch_id).strip(),
+    str(form_year).strip()
+])
 
 form_accepted = False
 if not form_filled:
-    st.warning("Please fill in all fields to enable Preview.")
-elif not re.fullmatch(r"\d{4}", str(year).strip()):
+    st.warning("Please fill in all fields to enable 'Preview Data' button.")
+elif not re.fullmatch(r"\d{4}", str(form_year).strip()):
     st.error("Please enter a valid Year (format: YYYY).")
 else:
     form_accepted = True
 
 checked_form = False
 if form_accepted:
-    checked_form = st.checkbox("Checked form fields?")
+    checked_form = st.checkbox("Confirm")
 
 preview_enabled = form_accepted and checked_form
-preview_clicked = st.button("Preview Data", disabled=not preview_enabled)
 
-if preview_clicked:
-    pdf_id = model + '_' + batch_id
+if st.button("Preview Data", disabled=not preview_enabled):
+    # Copy form to session state
+    file_state["model"] = form_model
+    file_state["batch_id"] = form_batch_id
+    file_state["year"] = form_year
+    file_state["preview_clicked"] = True
 
-    if brand == "Yamaha":
-        processor = YamahaProcessor(uploaded_file.read(), pdf_id, brand, model, batch_id, year)
-    elif brand == "Honda":
-        processor = HondaProcessor(uploaded_file.read(), pdf_id, brand, model, batch_id, year)
+# --- MAIN PROCESSING ---
+if file_state["preview_clicked"] and form_filled:
+    file_state["pdf_id"] = file_state["model"] + "_" + file_state["batch_id"]
 
-    with st.status("Extracting Parts Data") as status:
-        start_time = time.time()
-        mpl_df = processor.extract_text()
-        total_time = time.time() - start_time
-        status.update(label=f"Parts data extraction completed in {total_time:.2f} seconds. Click to Preview Table", state="complete")
-    
-        if mpl_df is not None:
-            st.subheader("Master Parts List Preview")
-            st.data_editor(mpl_df, use_container_width=True)
+    parameters = [
+            uploaded_file.read(),
+            file_state["pdf_id"],
+            file_state["brand"],
+            file_state["year"],
+            file_state["model"],
+            file_state["batch_id"]
+    ]
+
+    if file_state["brand"] == "Yamaha":
+        processor = YamahaProcessor(*parameters)
+
+    elif file_state["brand"] == "Honda":
+        processor = HondaProcessor(*parameters)
+
+    file_state["pdf_info"] = processor.get_pdf_info()
+
+    if file_state["mpl_df"] is None or file_state["pdf_section_df"] is None:
+        with st.status("Extracting Parts Data") as status:
+            start_time = time.time()
+            file_state["mpl_df"] = processor.extract_master_parts_list()
+            file_state["pdf_log"] = processor.extract_pdf_log(st.session_state["user_name"]) # replace with user id in future
+            total_time = time.time() - start_time
+            status.update(label=f"Parts data extraction completed in {total_time:.2f} seconds.", state="complete")
+
+        with st.status("Extracting Images") as status:
+            start_time = time.time()
+            file_state["pdf_section_df"] = processor.extract_pdf_section()
+            total_time = time.time() - start_time
+            status.update(label=f"Parts image extraction completed in {total_time:.2f} seconds.", state="complete")
+
+    # --- DISPLAY ---
+    if file_state["pdf_info"] is not None:
+        st.subheader("PDF Information Preview")
+        edited_pdf_info = st.data_editor(file_state["pdf_info"], use_container_width=True)
+        file_state["pdf_info"] = edited_pdf_info
+
+    if file_state["mpl_df"] is not None:
+        st.subheader("Master Parts List Preview")
+        edited_mpl_df = st.data_editor(file_state["mpl_df"], use_container_width=True)
+        file_state["mpl_df"] = edited_mpl_df
+
+    if file_state["pdf_section_df"] is not None:
+        st.subheader("PDF Section Preview")
+        edited_pdf_section_df = st.data_editor(file_state["pdf_section_df"], use_container_width=True)
+        file_state["pdf_section_df"] = edited_pdf_section_df
         
-    with st.status("Extracting Images") as status:
-        start_time = time.time()
-        image_df = processor.extract_images()
-        image_preview = []
-        for _, row in image_df.iterrows():
-            image_preview.append({
-                'pdf_id': row['pdf_id'],
-                'section': row['section'],
-                'image': row['image']
-            })
-        total_time = time.time() - start_time
-        status.update(label=f"Parts image extraction completed in {total_time:.2f} seconds. Click to Preview Table and Images", state="complete")
+        st.subheader("Preview: Parts Images")
+        if st.button("Display Image Previews"):
+            display_image_previews(file_state["pdf_section_df"], "", file_state["brand"])
 
-        if image_df is not None:
-            st.subheader("Parts Images Preview")
-            st.dataframe(image_df, use_container_width=True)
+    # upload pdf_info, mpl_df, pdf_section_df, pdf_log
+    if st.button("Upload Data to Database"):
+        try:
+            # Start a new SQLAlchemy session (transactional scope)
+            Session = sessionmaker(bind=engine)
+            session = Session()
 
-        if image_preview is not None:
-            advanced_display_image_previews(image_preview, "Preview: Parts Images", brand)
+            with session.begin():  # <-- start transaction block
+                file_state["pdf_info"].to_sql("pdf_info", session.connection(), if_exists="append", index=False)
+                file_state["pdf_section_df"].to_sql("pdf_section", session.connection(), if_exists="append", index=False)
+                file_state["mpl_df"].to_sql("master_parts_list", session.connection(), if_exists="append", index=False)
+                file_state["pdf_log"].to_sql("pdf_log", session.connection(), if_exists="append", index=False)
+
+            st.success("✅ Upload completed successfully.")
+
+        except Exception as e:
+            st.error(f"❌ Upload failed: {e}")
