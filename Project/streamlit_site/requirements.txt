@@ -1,7 +1,1 @@
-pandas==2.2.2
-pdfplumber==0.10.3
-PyMuPDF==1.22.3
-ipython==8.12.3
 streamlit==1.44.0
-streamlit-cookies-controller==0.0.4
-SQLAlchemy==2.0.41
