@@ -9,20 +9,22 @@ from PIL import Image, ImageOps
 from io import BytesIO
 from collections import defaultdict
 
-from datetime import datetime # only manage_database.py
+from datetime import datetime
 
 import streamlit as st
 from streamlit_cookies_controller import CookieController
 cookies = CookieController()
 
 # --- DATABASE SETUP ---
-from sqlalchemy import (select, update, delete, distinct, create_engine, text, Table, Column, Integer, String, MetaData, ForeignKey, LargeBinary)
-from sqlalchemy.orm import sessionmaker # currently only being used in view_images.py and MP jupyter files
-username = "postgres.thqqtxvmzisznglpukwh"
-password = "ImehQhjJwRw2wnkO"
+from sqlalchemy import (create_engine, select, update, delete, distinct, text, \
+                        Table, Column, Integer, String, MetaData, ForeignKey, LargeBinary)
+from sqlalchemy.orm import sessionmaker
+
 host = "aws-0-ap-southeast-1.pooler.supabase.com"
 port = "5432"
 database = "postgres"
+username = "postgres.thqqtxvmzisznglpukwh"
+password = "ImehQhjJwRw2wnkO"
 # SQLAlchemy connection URL
 DATABASE_URL = f"postgresql://{username}:{password}@{host}:{port}/{database}"
 # Create engine
@@ -86,6 +88,8 @@ class PDFProcessor:
             "bike_image": self.image
         }])
     
+    #def bike_image_display(self):
+        
     def extract_pdf_log(self, account_id):
         return pd.DataFrame([{
             "pdf_id": self.pdf_id,
