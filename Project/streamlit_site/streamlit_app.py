@@ -92,7 +92,6 @@ else:
             st.session_state.user_type = "guest"
             st.rerun()
 
-
 with st.sidebar:
     st.markdown("### Current Session State")
     st.json(st.session_state)

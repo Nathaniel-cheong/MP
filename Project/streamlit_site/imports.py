@@ -783,24 +783,26 @@ class HondaProcessor(PDFProcessor):
 
         return merged_df
 
-def display_image_previews(df, title, brand):
-    st.subheader(title)
-
-    num_cols = 5 if brand == "Honda" else 6
-
-    rows = [df.iloc[i:i + num_cols] for i in range(0, len(df), num_cols)]
-
+def display_image_previews(df, label_col, brand):
+    rows = [df.iloc[i:i + 4] for i in range(0, len(df), 4)]
     for row in rows:
-        cols = st.columns(num_cols)
+        cols = st.columns(len(row))
         for i, (_, item) in enumerate(row.iterrows()):
-            image = Image.open(BytesIO(item['section_image']))
-            with cols[i]:
-                st.image(
-                    image,
-                    caption=f"Section: {item['section_no']}",
-                    use_container_width=True
-                )
+            raw_data = item['section_image']
 
+            # Handle missing, NaN, or wrong types
+            if isinstance(raw_data, bytes):
+                try:
+                    image = Image.open(BytesIO(raw_data))
+                    with cols[i]:
+                        st.image(image, caption=item.get(label_col, ""), use_column_width=True)
+                except Exception as e:
+                    with cols[i]:
+                        st.warning(f"Image error: {e}")
+            else:
+                with cols[i]:
+                    st.warning("⚠️ No image data")
+                    
 def advanced_display_image_previews(image_data, title, brand):
     st.subheader(title)
 
