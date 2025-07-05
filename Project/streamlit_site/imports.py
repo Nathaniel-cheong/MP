@@ -8,7 +8,6 @@ from IPython.display import Image
 from PIL import Image, ImageOps
 from io import BytesIO
 from collections import defaultdict
-
 from datetime import datetime
 
 import streamlit as st
@@ -350,7 +349,7 @@ class YamahaProcessor(PDFProcessor):
 
 class HondaProcessor(PDFProcessor):
     @staticmethod
-    def extract_section_with_layout(pdf_stream: str, section_code: str, section_title: str) -> pd.DataFrame:
+    def extract_section_with_layout(pdf_stream: str, section_code: str, section_title: str):
         """
         Finds a specified section, locates 'Reqd. QTY', extracts in layout mode,
         then parses each part and variant into ref_no, part_no, description, remarks.
@@ -360,7 +359,7 @@ class HondaProcessor(PDFProcessor):
         code = section_code.upper()
         title = section_title.upper()
 
-        next_sec_re     = re.compile(r'^[A-Z]+-\d+', re.IGNORECASE)
+        next_sec_re     = re.compile(r'^[A-Z]+-\d+(?:-\d+)*', re.IGNORECASE)
         table_header_re = re.compile(r'\bReqd\.?\s*QTY\b', re.IGNORECASE)
         part_no_re      = re.compile(r'\b[0-9]{5,}(?:-[A-Z0-9-]+)+\b')
         end_re          = re.compile(r'.*PART\s*NO\.?\s*INDEX.*', re.IGNORECASE)
@@ -381,7 +380,11 @@ class HondaProcessor(PDFProcessor):
                         if table_header_re.search(u):
                             header_hit = True
                     else:
-                        if next_sec_re.match(u) and not u.startswith(code):
+                        # skip blank lines to avoid u.split()[0] errors
+                        if not u:
+                            continue
+                        first_token = u.split()[0]
+                        if next_sec_re.match(u) and first_token != code:
                             end_page = i
                             break
                 if end_page is not None:
@@ -405,7 +408,12 @@ class HondaProcessor(PDFProcessor):
                         if table_header_re.search(u):
                             in_table = True
                         continue
-                    if next_sec_re.match(u) and not u.startswith(code):
+                    # again guard against blank
+                    if not u:
+                        collected.append(ln)
+                        continue
+                    first_token = u.split()[0]
+                    if next_sec_re.match(u) and first_token != code:
                         break
                     collected.append(ln)
                 if stop_all:
@@ -447,6 +455,9 @@ class HondaProcessor(PDFProcessor):
             idx       = raw.find("--------")
             desc_part = raw[:idx].strip() if idx != -1 else raw
             cat_part  = raw[idx+8:].strip() if idx != -1 else ""
+            cat_part  = re.sub(r'^[0-9]+\s*', '', cat_part)
+            # strip quantity columns from description only
+            desc_part = re.sub(r'\s\d+(?:\s+\d+)+.*$', '', desc_part).strip()
 
             # clean up description
             desc_part = re.sub(r'\.{2,}\s+\d.*$', '', desc_part).strip()
@@ -456,6 +467,7 @@ class HondaProcessor(PDFProcessor):
             desc      = re.sub(r'(?:\s+(?:\(\d+\)|-+|\d+))+$',     "", desc).strip()
             desc      = re.sub(r'\.{2,}$',                         "", desc).strip()
             desc      = re.sub(r'(?:\s+[A-Z])+$',                  "", desc).strip()
+            desc      = re.sub(r'\s+[-\d ]+$',                     "", desc).strip()
             desc      = "" if not re.search(r'[A-Za-z]', desc) else desc
 
             # clean up catalogue codes → remarks
@@ -469,6 +481,10 @@ class HondaProcessor(PDFProcessor):
                 cat_clean = re.sub(r'(?<=[0-9A-Z]{2})(?=[A-Z]{2}(?:,|$))', ',', cat_clean)
             cat_clean    = re.sub(r'\d{4}$', '', cat_clean)
             tokens       = [t for t in cat_clean.split(',') if t]
+            if len(tokens) > 1 and re.fullmatch(r'[A-Z]+', tokens[0]):
+                m = re.match(r'^(\d+)', tokens[1])
+                if m:
+                    tokens[0] = m.group(1) + tokens[0]
             seen         = set()
             final_codes  = [c for c in tokens if c not in seen and not seen.add(c)]
             remarks      = ",".join(final_codes)
@@ -487,6 +503,7 @@ class HondaProcessor(PDFProcessor):
             descriptions.append(desc)
             remarks_list.append(remarks)
 
+        # build and return DataFrame
         df = pd.DataFrame({
             'ref_no':      ref_nos,
             'part_no':     part_nos,
@@ -497,13 +514,12 @@ class HondaProcessor(PDFProcessor):
     @staticmethod
     def extract_all_sections_one_pass(pdf_id, pdf_stream: str) -> pd.DataFrame:
         """
-        Opens the PDF once, walks through it page by page, detects sections using
-        next_sec_re, collects each section’s lines, inlines Phase 3+4 verbatim,
-        stops entirely when end_re is first encountered, strips any leading
-        "*GROUP" from titles, and writes a CSV with columns
-        section_no, section_name, ref_no, part_no, description, remarks.
+        Opens the PDF once, walks through it page by page, detects sections via next_sec_re,
+        collects each section’s lines (with the shim‐prefix_re logic you added),
+        and as soon as any end_re is hit, stops the entire extraction afterwards.
+        Writes CSV with columns section_no, section_name, ref_no, part_no, description, remarks.
         """
-        next_sec_re     = re.compile(r'^[A-Z]+-\d+', re.IGNORECASE)
+        next_sec_re     = re.compile(r'^[A-Z]+-\d+(?:-\d+)*', re.IGNORECASE)
         table_header_re = re.compile(r'\bReqd\.?\s*QTY\b', re.IGNORECASE)
         part_no_re      = re.compile(r'\b[0-9]{5,}(?:-[A-Z0-9-]+)+\b')
         end_re          = re.compile(r'.*PART\s*NO\.?\s*INDEX.*', re.IGNORECASE)
@@ -519,32 +535,46 @@ class HondaProcessor(PDFProcessor):
         done    = False
 
         def _flush(cur):
-            """Phase 3+4 logic verbatim, flushing cur['collected'] into our lists."""
+            """Phase 3+4 verbatim, with your prefix_re shim logic and all the desc/cat fixes."""
             records = []; last_ref = ""
-            for ln in cur['collected']:
-                m_pno = part_no_re.search(ln)
-                if m_pno:
-                    m_ref = re.match(r'^\s*(?:\((\d+)\)|(\d+))\s+', ln)
-                    if m_ref:
-                        last_ref = m_ref.group(1) or m_ref.group(2)
-                    records.append({
-                        'ref': last_ref,
-                        'part_no': m_pno.group(0),
-                        'buf': [ln[m_pno.end():].strip()]
-                    })
-                else:
-                    if not records: continue
-                    txt = ln.strip()
-                    if re.fullmatch(r'\d+', txt) or re.fullmatch(r'\d{4}\.\d{2}\.\d{2}', txt):
-                        continue
-                    records[-1]['buf'].append(txt)
+            prefix_re = re.compile(r'^\s*\(?(\d+)\)?\s+(' + part_no_re.pattern + r')', re.IGNORECASE)
 
+            # Phase 3: grouping
+            for ln in cur['collected']:
+                # same grouping logic
+                m0 = prefix_re.match(ln)
+                if m0:
+                    last_ref, pno = m0.group(1), m0.group(2)
+                    rest = ln[m0.end():].strip()
+                    records.append({'ref': last_ref, 'part_no': pno, 'buf': [rest]})
+                else:
+                    m_pno = part_no_re.search(ln)
+                    if m_pno:
+                        pno  = m_pno.group(0)
+                        rest = ln[m_pno.end():].strip()
+                        records.append({'ref': last_ref, 'part_no': pno, 'buf': [rest]})
+                    else:
+                        if not records:
+                            continue
+                        txt = ln.strip()
+                        if re.fullmatch(r'\d+', txt) or re.fullmatch(r'\d{4}\.\d{2}\.\d{2}', txt):
+                            continue
+                        records[-1]['buf'].append(txt)
+
+            # Phase 4: parsing & cleanup
             for rec in records:
                 raw = " ".join(rec['buf']).replace('∙','').replace('•','').replace('\uf020','')
                 raw = re.sub(r'\s+', ' ', raw).strip()
+
                 idx = raw.find("--------")
                 desc_part = raw[:idx].strip() if idx != -1 else raw
                 cat_part  = raw[idx+8:].strip() if idx != -1 else ""
+
+                # — NEW: strip any stray leading serials from cat_part
+                cat_part = re.sub(r'^[0-9]+\s*', '', cat_part)
+
+                # — NEW: strip quantity columns from desc_part
+                desc_part = re.sub(r'\s\d+(?:\s+\d+)+.*$', '', desc_part).strip()
 
                 # description cleanup
                 desc_part = re.sub(r'\.{2,}\s+\d.*$', '', desc_part).strip()
@@ -565,12 +595,21 @@ class HondaProcessor(PDFProcessor):
                     cat_clean = raw_codes.replace(" ", "")
                     cat_clean = re.sub(r'([A-Z])(?=\d)', r'\1,', cat_clean)
                     cat_clean = re.sub(r'(?<=[0-9A-Z]{2})(?=[A-Z]{2}(?:,|$))', ',', cat_clean)
-                cat_clean   = re.sub(r'\d{4}$', '', cat_clean)
-                tokens      = [t for t in cat_clean.split(',') if t]
-                seen        = set()
-                final_codes = [c for c in tokens if c not in seen and not seen.add(c)]
-                remarks     = ",".join(final_codes)
+                cat_clean = re.sub(r'\d{4}$', '', cat_clean)
 
+                # — NEW: if first token is pure letters but second starts with a digit, prefix it
+                tokens = [t for t in cat_clean.split(',') if t]
+                if len(tokens) > 1 and re.fullmatch(r'[A-Z]+', tokens[0]):
+                    m = re.match(r'^(\d+)', tokens[1])
+                    if m:
+                        tokens[0] = m.group(1) + tokens[0]
+
+                # dedupe
+                seen  = set()
+                codes = [c for c in tokens if c not in seen and not seen.add(c)]
+                remarks = ",".join(codes)
+
+                # part_no suffix logic
                 m3 = re.match(r'^(.+?)([A-Z]{3,})$', rec['part_no'])
                 if m3:
                     core, suf = m3.group(1), m3.group(2)
@@ -586,6 +625,7 @@ class HondaProcessor(PDFProcessor):
                 descriptions.append(desc)
                 remarks_list.append(remarks)
 
+        # --- the rest of extract_all_sections_one_pass is unchanged ---
         with pdfplumber.open(pdf_stream) as pdf:
             for page in pdf.pages:
                 if done:
@@ -594,18 +634,14 @@ class HondaProcessor(PDFProcessor):
                 plain  = (page.extract_text() or "").splitlines()
                 layout = (page.extract_text(layout=True) or "").splitlines()
 
-                # detect new section headers
                 for ln in plain:
-                    if done:
-                        break
                     u = ln.strip().upper()
                     if next_sec_re.match(u):
                         if current:
                             _flush(current)
                         parts = ln.strip().split(None, 1)
                         raw_title = parts[1].strip() if len(parts) > 1 else ""
-                        # strip any leading "*GROUP"
-                        title = re.sub(r'\b[A-Z]+GROUP\b\s*', '', raw_title, flags=re.IGNORECASE)
+                        title     = re.sub(r'\b[A-Z]+GROUP\b\s*', '', raw_title, re.IGNORECASE)
                         current = {
                             'code':       parts[0].upper(),
                             'title':      title,
@@ -613,48 +649,50 @@ class HondaProcessor(PDFProcessor):
                             'collected':  []
                         }
 
-                # collect layout lines
                 if current:
                     for ln in layout:
                         u = ln.strip().upper()
                         if end_re.match(u):
                             _flush(current)
                             done = True
+                            current = None
                             break
                         if not current['header_hit']:
                             if table_header_re.search(u):
                                 current['header_hit'] = True
                             continue
-                        if next_sec_re.match(u) and not u.startswith(current['code']):
+                        first_token = u.split()[0] if u else ""
+                        if next_sec_re.match(u) and first_token != current['code']:
                             _flush(current)
                             current = None
                             break
-                        current['collected'].append(ln)
+                        collected = current['collected']
+                        collected.append(ln)
 
         if current and not done:
             _flush(current)
 
         final_df = pd.DataFrame({
-            'pdf_id': pdf_id,       
+            'pdf_id': pdf_id,
             'part_no':      part_nos,
             'description':  descriptions,
             'section_no':   section_nos,
             'section_name': section_names,
             'ref_no':       ref_nos,
-            'add_info':      remarks_list,
+            'add_info':      remarks_list
         })
         final_df["section_id"] = final_df["pdf_id"] + "_" + final_df["section_no"]
         final_df[['part_no', 'description', 'ref_no', 'add_info', 'section_id', 'section_no', 'section_name', 'pdf_id']]
+        return final_df
 
-        return final_df 
-    
     def honda_extract_images_with_fig_labels(self):
         doc = fitz.open(stream=self.pdf_stream, filetype="pdf")
         data = []
 
         MAIN_GROUPS = ["ENGINEGROUP", "FRAMEGROUP"]
-
         section_pattern = r"\b((?:E|F|EOP)-\d{1,3}(?:-\d+)?)\b"
+
+        seen_section_ids = set()  # ✅ Track globally across pages
 
         for page_num in range(len(doc)):
             page = doc.load_page(page_num)
@@ -662,66 +700,53 @@ class HondaProcessor(PDFProcessor):
             lines = text.splitlines()
 
             # --- Check if page is a MAIN GROUP page ---
-            page_has_main_group = False
-
             text_no_spaces = re.sub(r"\s+", "", text).lower()
-
-            for group in MAIN_GROUPS:
-                if group.lower() in text_no_spaces:
-                    page_has_main_group = True
-                    break
-
-            if not page_has_main_group:
-                continue  # skip page
+            if not any(group.lower() in text_no_spaces for group in MAIN_GROUPS):
+                continue
 
             # --- Check if page has images ---
             image_list = page.get_images()
             if not image_list:
-                continue  # skip if no images
+                continue
 
-            # --- Extract section labels from page ---
+            # --- Extract section labels ---
             sections_found = []
             for line in lines:
                 match = re.search(section_pattern, line)
                 if match:
-                    section = match.group(1)
-                    sections_found.append(section)
+                    sections_found.append(match.group(1))
 
             if not sections_found:
-                # print(f"\n=== PAGE {page_num+1} ===")
-                # print("[SKIP] No sections found")
+                print(f"\n=== PAGE {page_num+1} ===")
+                print("[SKIP] No sections found")
                 continue
-            
-            # For debugging
-            # print(f"\n=== PAGE {page_num+1} ===")
-            # print(f"[MAIN GROUP PAGE] → {len(image_list)} image(s) found")
-            # print(f"Sections found: {sections_found}")
 
-            # --- Map each section to corresponding image ---
-            # Note: assumes order of section labels = order of images
+            print(f"\n=== PAGE {page_num+1} ===")
+            print(f"[MAIN GROUP PAGE] → {len(image_list)} image(s) found")
+            print(f"Sections found: {sections_found}")
+
+            # --- Map sections to images ---
             for idx, section in enumerate(sections_found):
                 if idx >= len(image_list):
-                    #print(f"⚠️ Not enough images for sections — stopping at {idx}")
+                    print(f"⚠️ Not enough images for sections — stopping at {idx}")
                     break
+
+                section_id = f"{self.pdf_id}_{section}"
+                if section_id in seen_section_ids:
+                    print(f"⚠️ Duplicate section_id {section_id} — skipping")
+                    continue
+                seen_section_ids.add(section_id)
 
                 image_info = image_list[idx]
                 xref = image_info[0]
                 base_image = doc.extract_image(xref)
                 image = self.normalize_image_background(base_image["image"])
 
-                section_id = f"{self.pdf_id}_{section}"
-
                 data.append({
                     "section_id": section_id,
                     "pdf_id": self.pdf_id,
                     "section_image": image
                 })
-
-                # # For debug: display the section + image
-                # img = Image.open(BytesIO(image))
-                # display(img)
-
-                #print(f"[PAGE {page_num+1}] {section} → Image saved")
 
         return pd.DataFrame(data)
 
@@ -768,7 +793,7 @@ def display_image_previews(df, title, brand):
     for row in rows:
         cols = st.columns(num_cols)
         for i, (_, item) in enumerate(row.iterrows()):
-            image = Image.open(BytesIO(item['image']))
+            image = Image.open(BytesIO(item['section_image']))
             with cols[i]:
                 st.image(
                     image,

@@ -1,5 +1,7 @@
 # if choose wrong brand to process pdf, pdf will be empty and pdf_section extraction will have error as missing data at 'section_id'
 # add error handling and pdf_edit through csv import
+
+# Fix xlsx import, image column become string instead of bytea
 from imports import *
 import io
 
