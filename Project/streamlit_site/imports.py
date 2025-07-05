@@ -783,25 +783,33 @@ class HondaProcessor(PDFProcessor):
 
         return merged_df
 
-def display_image_previews(df, label_col, brand):
-    rows = [df.iloc[i:i + 4] for i in range(0, len(df), 4)]
-    for row in rows:
-        cols = st.columns(len(row))
-        for i, (_, item) in enumerate(row.iterrows()):
-            raw_data = item['section_image']
+def display_image_previews(df, title, brand):
+    st.subheader(title)
 
-            # Handle missing, NaN, or wrong types
-            if isinstance(raw_data, bytes):
+    num_cols = 5 if brand == "Honda" else 6
+    rows = [df.iloc[i:i + num_cols] for i in range(0, len(df), num_cols)]
+
+    for row in rows:
+        cols = st.columns(num_cols)
+        for i, (_, item) in enumerate(row.iterrows()):
+            section_image = item.get('section_image', None)
+
+            # Safe check before opening image
+            if isinstance(section_image, bytes):
                 try:
-                    image = Image.open(BytesIO(raw_data))
+                    image = Image.open(BytesIO(section_image))
                     with cols[i]:
-                        st.image(image, caption=item.get(label_col, ""), use_column_width=True)
-                except Exception as e:
+                        st.image(
+                            image,
+                            caption=f"Section: {item['section_no']}",
+                            use_container_width=True
+                        )
+                except UnidentifiedImageError:
                     with cols[i]:
-                        st.warning(f"Image error: {e}")
+                        st.warning("⚠️ Unable to display image")
             else:
                 with cols[i]:
-                    st.warning("⚠️ No image data")
+                    st.warning("⚠️ No valid image data")
                     
 def advanced_display_image_previews(image_data, title, brand):
     st.subheader(title)
