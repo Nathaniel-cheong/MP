@@ -5,7 +5,7 @@ import pandas as pd
 import pdfplumber
 import fitz
 from IPython.display import Image
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, UnidentifiedImageError
 from io import BytesIO
 from collections import defaultdict
 from datetime import datetime
