@@ -1,4 +1,3 @@
---no-cache-dir
 pdfplumber==0.10.3
 IPython==8.24.0
 streamlit-cookies-controller==0.0.4
