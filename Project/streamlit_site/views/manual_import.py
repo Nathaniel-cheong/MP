@@ -1,6 +1,9 @@
 # if choose wrong brand to process pdf, pdf will be empty and pdf_section extraction will have error as missing data at 'section_id'
 # add error handling and pdf_edit through csv import
+
+# Fix xlsx import, image column become string instead of bytea
 from imports import *
+import io
 
 st.title("Manual Imports")
 
@@ -82,6 +85,7 @@ st.info("Please review all form fields. All values were auto-filled from the fil
 form_model = st.text_input("Model:", value=file_state["model"])
 form_batch_id = st.text_input("Batch ID:", value=file_state["batch_id"])
 form_year = st.text_input("Year:", value=file_state["year"])
+form_image = st.file_uploader("Upload the bike image", type=["jpg", "jpeg", "png"])
 
 form_filled = all([
     str(form_model).strip(),
@@ -120,7 +124,8 @@ if file_state["preview_clicked"] and form_filled:
             file_state["brand"],
             file_state["year"],
             file_state["model"],
-            file_state["batch_id"]
+            file_state["batch_id"],
+            form_image
     ]
 
     if file_state["brand"] == "Yamaha":
@@ -148,19 +153,180 @@ if file_state["preview_clicked"] and form_filled:
     # --- DISPLAY ---
     if file_state["pdf_info"] is not None:
         st.subheader("PDF Information Preview")
-        edited_pdf_info = st.data_editor(file_state["pdf_info"], use_container_width=True)
-        file_state["pdf_info"] = edited_pdf_info
+        st.dataframe(file_state["pdf_info"], use_container_width=True)
 
+    # MPL preview + edits UI
     if file_state["mpl_df"] is not None:
         st.subheader("Master Parts List Preview")
-        edited_mpl_df = st.data_editor(file_state["mpl_df"], use_container_width=True)
-        file_state["mpl_df"] = edited_mpl_df
+        st.dataframe(file_state["mpl_df"], use_container_width=True)
 
+        # --- Download Button ---
+        buffer = io.BytesIO()
+        file_state["mpl_df"].to_excel(buffer, index=False)
+        st.download_button(
+            label="📥 Download as Excel",
+            data=buffer.getvalue(),
+            file_name="master_parts_list.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="mpl_download_button"
+        )
+
+        # --- Init internal flags ---
+        file_state.setdefault("mpl_show_excel_reimport", False)
+        file_state.setdefault("mpl_excel_uploaded", False)
+        file_state.setdefault("mpl_edit_mode", False)
+
+        # --- Toggle to show reimport section ---
+        if st.button("📤 Reimport File", key="mpl_reimport_button"):
+            file_state["mpl_show_excel_reimport"] = True
+
+        # --- Reimport Excel UI ---
+        if file_state["mpl_show_excel_reimport"]:
+            with st.form("mpl_reimport_excel_form"):
+                st.markdown("Upload an Excel file to replace the current Master Parts List.")
+                uploaded_file = st.file_uploader("Upload Edited MPL Excel File (.xlsx)", type="xlsx")
+
+                if uploaded_file:
+                    try:
+                        new_df = pd.read_excel(uploaded_file, engine="openpyxl")
+                        file_state["mpl_reimport_temp_df"] = new_df
+                        st.success("✅ File uploaded. Please confirm import below.")
+                    except Exception as e:
+                        st.error(f"❌ Failed to read Excel file: {e}")
+
+                confirm_import = st.form_submit_button("✅ Confirm Import")
+                cancel_import = st.form_submit_button("❌ Cancel")
+
+                if confirm_import:
+                    if file_state["mpl_reimport_temp_df"] is not None:
+                        file_state["mpl_df"] = file_state["mpl_reimport_temp_df"]
+                        file_state["mpl_reimport_temp_df"] = None
+                        file_state["mpl_excel_uploaded"] = True
+                        file_state["mpl_show_excel_reimport"] = False
+                        st.success("✅ Excel file imported and table updated.")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ Please upload a valid Excel file before confirming.")
+
+                elif cancel_import:
+                    file_state["mpl_reimport_temp_df"] = None
+                    file_state["mpl_show_excel_reimport"] = False
+                    st.info("❌ Reimport cancelled.")
+                    st.rerun()
+
+        # --- Edit Mode Toggle ---
+        if st.button("✏️ Edit Table", key="mpl_edit_button"):
+            file_state["mpl_edit_mode"] = True
+
+        # --- Edit Form ---
+        if file_state["mpl_edit_mode"]:
+            with st.form("mpl_edit_form"):
+                st.subheader("Edit Master Parts List Table")
+                st.write("Edit the table directly below and click **Save MPL** to apply changes.")
+                editable_mpl_df = file_state["mpl_df"]
+                edited_mpl_df = st.data_editor(editable_mpl_df, use_container_width=True)
+
+                confirm_edit = st.form_submit_button("✅ Save MPL")
+                cancel_edit = st.form_submit_button("❌ Cancel")
+
+                if confirm_edit:
+                    file_state["mpl_df"] = edited_mpl_df
+                    file_state["mpl_edit_mode"] = False
+                    st.success("✅ Master Parts List data updated.")
+                    st.rerun()
+
+                elif cancel_edit:
+                    file_state["mpl_edit_mode"] = False
+                    st.info("❌ Edit cancelled.")
+                    st.rerun()
+
+    # PDF SECTION preview + edits UI
     if file_state["pdf_section_df"] is not None:
+        # Original Table Preview + Changes applied
         st.subheader("PDF Section Preview")
-        edited_pdf_section_df = st.data_editor(file_state["pdf_section_df"], use_container_width=True)
-        file_state["pdf_section_df"] = edited_pdf_section_df
-        
+        st.dataframe(file_state["pdf_section_df"], use_container_width=True)
+
+        # Download Table as Xlsx Button
+        buffer = io.BytesIO()
+        file_state["pdf_section_df"].to_excel(buffer, index=False)
+        st.download_button(
+            label="📥 Download as Excel",
+            data=buffer.getvalue(),
+            file_name="pdf_section_data.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="pdf_section_download_button"
+        )
+
+        # Init internal flags for UI
+        file_state.setdefault("pdf_section_show_excel_reimport", False)
+        file_state.setdefault("pdf_section_excel_uploaded", False)
+        file_state.setdefault("pdf_section_edit_mode", False)
+
+        # Button to toggle reimport section UI
+        if st.button("📤 Reimport Excel File", key="pdf_section_reimport_button"):
+            file_state["pdf_section_show_excel_reimport"] = True
+
+        # Reimport section UI
+        if file_state["pdf_section_show_excel_reimport"]:
+            with st.form("pdf_section_reimport_excel_form"):
+                st.markdown("Upload an Excel file to replace the current PDF Section table.")
+                uploaded_file = st.file_uploader("Upload Edited Excel File (.xlsx)", type="xlsx")
+
+                if uploaded_file:
+                    try:
+                        new_df = pd.read_excel(uploaded_file, engine="openpyxl")
+                        file_state["pdf_section_reimport_temp_df"] = new_df
+                        st.success("✅ File uploaded. Please confirm import below.")
+                    except Exception as e:
+                        st.error(f"❌ Failed to read Excel file: {e}")
+
+                confirm_import = st.form_submit_button("✅ Confirm Import")
+                cancel_import = st.form_submit_button("❌ Cancel")
+
+                if confirm_import:
+                    if file_state["pdf_section_reimport_temp_df"] is not None:
+                        file_state["pdf_section_df"] = file_state["pdf_section_reimport_temp_df"]
+                        file_state["pdf_section_reimport_temp_df"] = None
+                        file_state["pdf_section_excel_uploaded"] = True
+                        file_state["pdf_section_show_excel_reimport"] = False
+                        st.success("✅ Excel file imported and table updated.")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ Please upload a valid Excel file before confirming.")
+
+                elif cancel_import:
+                    file_state["pdf_section_reimport_temp_df"] = None
+                    file_state["pdf_section_show_excel_reimport"] = False
+                    st.info("❌ Reimport cancelled.")
+                    st.rerun()
+
+        # Button to toggle Edit Table UI
+        if st.button("✏️ Edit Table", key="pdf_section_edit_button"):
+            file_state["pdf_section_edit_mode"] = True
+
+        # Edit Table UI
+        if file_state["pdf_section_edit_mode"]:
+            with st.form("pdf_section_edit_form"):
+                st.subheader("Edit PDF Section Table")
+                st.write("Edit the table directly below and click **Save PDF Sections** to apply changes.")
+                editable_pdf_section_df = file_state["pdf_section_df"]
+                edited_pdf_section_df = st.data_editor(editable_pdf_section_df, use_container_width=True)
+
+                confirm_edit = st.form_submit_button("✅ Save PDF Sections")
+                cancel_edit = st.form_submit_button("❌ Cancel")
+
+                if confirm_edit:
+                    file_state["pdf_section_df"] = edited_pdf_section_df
+                    file_state["pdf_section_edit_mode"] = False
+                    st.success("✅ PDF Section data updated.")
+                    st.rerun()
+
+                elif cancel_edit:
+                    file_state["pdf_section_edit_mode"] = False
+                    st.info("❌ Edit cancelled.")
+                    st.rerun()
+
+        # Image Preview UI
         st.subheader("Preview: Parts Images")
         if st.button("Display Image Previews"):
             display_image_previews(file_state["pdf_section_df"], "", file_state["brand"])
