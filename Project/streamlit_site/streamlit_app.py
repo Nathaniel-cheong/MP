@@ -75,14 +75,14 @@ else:
     if st.session_state.user_type == "staff":
         pg = st.navigation({
             "User": [home_page, signin_page],
-            "Staff": [manual_import_page, test_page, db_manage_page],
+            "Staff": [manual_import_page],
             # "Dashboards": [dashboard_1_page, dashbaord_2_page],
         })
 
     elif st.session_state.user_type == "admin":
         pg = st.navigation({
             "User": [home_page, signin_page],
-            "Staff": [manual_import_page, db_manage_page, test_page],
+            "Staff": [manual_import_page],
             "Admin": [acc_manage_page],
             #"Dashboards": [dashboard_1_page, dashbaord_2_page],
         })
