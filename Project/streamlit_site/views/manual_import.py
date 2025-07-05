@@ -172,13 +172,13 @@ if file_state["preview_clicked"] and form_filled:
             Session = sessionmaker(bind=engine)
             session = Session()
 
-            with session.begin():  # <-- start transaction block
+            with session.begin():
                 file_state["pdf_info"].to_sql("pdf_info", session.connection(), if_exists="append", index=False)
                 file_state["pdf_section_df"].to_sql("pdf_section", session.connection(), if_exists="append", index=False)
                 file_state["mpl_df"].to_sql("master_parts_list", session.connection(), if_exists="append", index=False)
                 file_state["pdf_log"].to_sql("pdf_log", session.connection(), if_exists="append", index=False)
 
-            st.success("✅ Upload completed successfully.")
+            st.success("Upload completed successfully.")
 
         except Exception as e:
             st.error(f"❌ Upload failed: {e}")
