@@ -2,6 +2,7 @@
 # add error handling and pdf_edit through csv import
 
 # Fix xlsx import, image column become string instead of bytea
+# Add error handling for db
 from imports import *
 import io
 
@@ -104,6 +105,12 @@ else:
 checked_form = False
 if form_accepted:
     checked_form = st.checkbox("Confirm")
+
+if checked_form:
+    file_state['mpl_df'] = None
+    file_state['pdf_section_df'] = None
+    file_state['pdf_log'] = None
+    file_state['pdf_info'] = None
 
 preview_enabled = form_accepted and checked_form
 

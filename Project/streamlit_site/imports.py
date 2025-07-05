@@ -5,7 +5,7 @@ import pandas as pd
 import pdfplumber
 import fitz
 from IPython.display import Image
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, UnidentifiedImageError
 from io import BytesIO
 from collections import defaultdict
 from datetime import datetime
@@ -19,13 +19,8 @@ from sqlalchemy import (create_engine, select, update, delete, distinct, text, \
                         Table, Column, Integer, String, MetaData, ForeignKey, LargeBinary)
 from sqlalchemy.orm import sessionmaker
 
-host = "aws-0-ap-southeast-1.pooler.supabase.com"
-port = "5432"
-database = "postgres"
-username = "postgres.thqqtxvmzisznglpukwh"
-password = "ImehQhjJwRw2wnkO"
 # SQLAlchemy connection URL
-DATABASE_URL = f"postgresql://{username}:{password}@{host}:{port}/{database}"
+DATABASE_URL = f"postgresql://{st.secrets.username}:{st.secrets.password}@{st.secrets.host}:{st.secrets.port}/{st.secrets.database}"
 # Create engine
 engine = create_engine(DATABASE_URL)
 
