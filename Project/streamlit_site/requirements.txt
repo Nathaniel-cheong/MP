@@ -3,4 +3,4 @@ IPython==8.24.0
 streamlit-cookies-controller==0.0.4
 psycopg2-binary==2.9.10
 sqlalchemy==2.0.31
-PyMuPDF==1.26.3
+PyMuPDF==1.25.5
