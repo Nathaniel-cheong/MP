@@ -20,6 +20,8 @@ from sqlalchemy import (create_engine, select, update, delete, distinct, text, \
 from sqlalchemy.orm import sessionmaker
 
 # SQLAlchemy connection URL
+# stored in user/username/secrets.toml on local
+# stored in streamlit secrets on deployment
 DATABASE_URL = f"postgresql://{st.secrets.username}:{st.secrets.password}@{st.secrets.host}:{st.secrets.port}/{st.secrets.database}"
 # Create engine
 engine = create_engine(DATABASE_URL)
