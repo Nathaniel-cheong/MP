@@ -15,13 +15,6 @@ import streamlit as st
 from streamlit_cookies_controller import CookieController
 cookies = CookieController()
 
-# added from manual merge
-import qrcode
-from sqlalchemy.exc import ProgrammingError
-import pickle
-import random
-import string
-
 # --- DATABASE SETUP ---
 from sqlalchemy import (create_engine, select, update, delete, distinct, text, join, \
                         Table, Column, Integer, String, MetaData, ForeignKey, LargeBinary)
