@@ -6,21 +6,26 @@ import pandas as pd
 import pdfplumber
 import fitz  # PyMuPDF
 import pickle
+import io
+import qrcode
+from sqlalchemy.exc import ProgrammingError
+
 
 # For Image Display within the df
 from IPython.display import Image
 from PIL import Image, ImageOps
 from io import BytesIO
+from PIL import Image as PILImage
 
 # --- DATABASE SETUP ---
 from sqlalchemy import (select, create_engine, text, Table, Column, Integer, String, MetaData, ForeignKey, LargeBinary)
 from sqlalchemy.orm import sessionmaker
 
-username = "tpmpams_user"
-password = "X5Lx2fWLXQ18cxaEngOODl3gXtMq7H8f"
-host = "dpg-d0r91k2dbo4c73a4kip0-a.singapore-postgres.render.com"
+username = "postgres.thqqtxvmzisznglpukwh"
+password = "ImehQhjJwRw2wnkO"
+host = "aws-0-ap-southeast-1.pooler.supabase.com"
 port = "5432"
-database = "tpmpams"
+database = "postgres"
 
 # SQLAlchemy connection URL
 DATABASE_URL = f"postgresql://{username}:{password}@{host}:{port}/{database}"
