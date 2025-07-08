@@ -6,6 +6,7 @@ import pdfplumber
 import fitz
 from IPython.display import Image
 from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image as PILImage
 from io import BytesIO
 from collections import defaultdict
 from datetime import datetime
@@ -14,12 +15,22 @@ import streamlit as st
 from streamlit_cookies_controller import CookieController
 cookies = CookieController()
 
+# added from manual merge
+import qrcode
+from sqlalchemy.exc import ProgrammingError
+import pickle
+import random
+import string
+
 # --- DATABASE SETUP ---
-from sqlalchemy import (create_engine, select, update, delete, distinct, text, \
+from sqlalchemy import (create_engine, select, update, delete, distinct, text, join, \
                         Table, Column, Integer, String, MetaData, ForeignKey, LargeBinary)
+
 from sqlalchemy.orm import sessionmaker
 
 # SQLAlchemy connection URL
+# stored in user/username/secrets.toml on local
+# stored in streamlit secrets on deployment
 DATABASE_URL = f"postgresql://{st.secrets.username}:{st.secrets.password}@{st.secrets.host}:{st.secrets.port}/{st.secrets.database}"
 # Create engine
 engine = create_engine(DATABASE_URL)

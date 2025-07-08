@@ -106,12 +106,6 @@ checked_form = False
 if form_accepted:
     checked_form = st.checkbox("Confirm")
 
-if checked_form:
-    file_state['mpl_df'] = None
-    file_state['pdf_section_df'] = None
-    file_state['pdf_log'] = None
-    file_state['pdf_info'] = None
-
 preview_enabled = form_accepted and checked_form
 
 if st.button("Preview Data", disabled=not preview_enabled):
