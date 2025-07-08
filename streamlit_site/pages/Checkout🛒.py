@@ -1,14 +1,11 @@
-import os
-import io
-import qrcode
-import streamlit as st
 from sqlalchemy import (
     Table, Column, Integer, String, MetaData,
     Date, UniqueConstraint, ForeignKey, select, text, join
 )
 from imports import engine
+from imports import *
 
-# ─── Persistence Helpers ─────────────────────────────────────────────────
+# Persistence Helpers
 from streamlit_app import (
     load_cart_from_disk,
     save_cart_to_disk,
@@ -19,7 +16,7 @@ from streamlit_app import (
     gen_basket_id,
 )
 
-# ─── Detect QR-link mode & set_page_config must come first ───────────────
+# Detect QR-link mode & set_page_config
 qp = st.query_params
 is_qr_view = "id" in qp
 
@@ -28,10 +25,10 @@ st.set_page_config(
     initial_sidebar_state="collapsed" if is_qr_view else "expanded",
 )
 
-# ─── Load persisted nav + cart state ─────────────────────────────────────
+# Load persisted nav + cart state
 load_session_state()
 
-# ─── Ensure cart_data exists ─────────────────────────────────────────────
+# Ensure cart_data exists
 if "cart_data" not in st.session_state:
     disk = load_cart_from_disk()
     if disk:
@@ -53,7 +50,7 @@ if "cart_data" not in st.session_state:
 
 cart = st.session_state.cart_data
 
-# ─── QR-only detail view ─────────────────────────────────────────────────
+# QR-only detail view
 if is_qr_view:
     raw_id = qp["id"]
     bid = raw_id[0] if isinstance(raw_id, list) else raw_id
@@ -92,7 +89,7 @@ if is_qr_view:
         st.info("No items found for this basket.")
     st.stop()
 
-# ─── Show QR confirmation block ───────────────────────────────────────────
+# Show QR confirmation block
 if st.session_state.get("show_qr", False):
     buf = io.BytesIO(st.session_state.qr_bytes)
     buf.seek(0)
@@ -103,7 +100,7 @@ if st.session_state.get("show_qr", False):
     st.markdown("### Once completed please refresh the page")
     st.stop()
 
-# ─── View state defaults ─────────────────────────────────────────────────
+# View state defaults
 st.session_state.setdefault("view", "cart")
 st.session_state.setdefault("checkout_id", None)
 
@@ -112,7 +109,7 @@ def update_quantity(idx: int):
     parts = cart["part_no"][0]
     qtys  = cart["quantity"][0]
     new_q  = st.session_state[f"qty_input_{idx}"]
-    i      = idx - 1
+    i = idx - 1
     if new_q <= 0:
         parts.pop(i); qtys.pop(i)
     else:

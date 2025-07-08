@@ -1,4 +1,8 @@
 from imports import *
+import streamlit as st
+from sqlalchemy import text
+from io import BytesIO
+from PIL import Image as PILImage
 
 # Persistence Helpers
 from streamlit_app import (
@@ -156,8 +160,8 @@ if st.session_state.page_num == 0:
     cols = st.columns(weights, gap="small")
     for col, b in zip(cols[:-1], brands):
         with col:
-            url = {"Honda":"MP\\streamlit_site\\images\\honda.svg",
-                   "Yamaha":"MP\\streamlit_site\\images\\Yamaha_Logo.jpg"}.get(b)
+            url = {"Honda":"MP\streamlit_site\images\honda.svg",
+                   "Yamaha":"MP\streamlit_site\images\Yamaha_Logo.jpg"}.get(b)
             if url: st.image(url, width=250)
             else: st.write(b)
             if st.button(b):
