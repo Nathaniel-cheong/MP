@@ -16,6 +16,12 @@ home_page = st.Page(
     default=True,
 )
 
+# checkout_page = st.Page(
+#     page="views/checkout.py",
+#     title="Checkout",
+#     icon="🛒",
+# )
+
 manual_import_page = st.Page(
     page="views/manual_import.py",
     title="Import PDF Manuals here",
