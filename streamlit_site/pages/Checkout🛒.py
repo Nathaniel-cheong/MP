@@ -2,19 +2,8 @@ from sqlalchemy import (
     Table, Column, Integer, String, MetaData,
     Date, UniqueConstraint, ForeignKey, select, text, join
 )
-from imports import engine
-from imports import *
-
-# Persistence Helpers
-from streamlit_app import (
-    load_cart_from_disk,
-    save_cart_to_disk,
-    load_session_state,
-    save_session_state,
-    PICKLE_PATH,
-    APP_STATE_PATH,
-    gen_basket_id,
-)
+from imports import engine, st, io, qrcode  # assume st/io/qrcode are in imports
+from streamlit_app import gen_basket_id
 
 # Detect QR-link mode & set_page_config
 qp = st.query_params
@@ -25,28 +14,20 @@ st.set_page_config(
     initial_sidebar_state="collapsed" if is_qr_view else "expanded",
 )
 
-# Load persisted nav + cart state
-load_session_state()
-
-# Ensure cart_data exists
+# Initialize our session state for cart_data
 if "cart_data" not in st.session_state:
-    disk = load_cart_from_disk()
-    if disk:
-        st.session_state.cart_data = disk
-    else:
-        new_id = gen_basket_id()
-        st.session_state.cart_data = {
-            "basket_id":     [new_id],
-            "part_no":       [[]],
-            "quantity":      [[]],
-            "purchase_type": [],
-            "customer_name": [],
-            "contact":       [],
-            "email":         [],
-            "postal_code":   [],
-            "address":       []
-        }
-        save_cart_to_disk()
+    new_id = gen_basket_id()
+    st.session_state.cart_data = {
+        "basket_id":     [new_id],
+        "part_no":       [[]],
+        "quantity":      [[]],
+        "purchase_type": [],
+        "customer_name": [],
+        "contact":       [],
+        "email":         [],
+        "postal_code":   [],
+        "address":       []
+    }
 
 cart = st.session_state.cart_data
 
@@ -77,7 +58,6 @@ if is_qr_view:
     st.markdown(f"## Order Details for Basket {bid}")
     if rows:
         for part, desc, qty, od in rows:
-            # two-column display just like homepage
             c1, c2 = st.columns([3,7])
             with c1:
                 st.markdown(f"**{part}**")
@@ -114,17 +94,16 @@ def update_quantity(idx: int):
         parts.pop(i); qtys.pop(i)
     else:
         qtys[i] = new_q
-    save_cart_to_disk(); save_session_state()
+    # no pickle save
 
 def remove_entire(part: str):
     parts = cart["part_no"][0]; qtys = cart["quantity"][0]
     i      = parts.index(part)
     parts.pop(i); qtys.pop(i)
-    save_cart_to_disk(); save_session_state()
+    # no pickle save
 
 def show_checkout():
     st.session_state.view = "checkout"
-    save_session_state()
 
 # ─── Cart & checkout UI ─────────────────────────────────────────────────
 st.title("🛒 Your Shopping Cart")
@@ -136,7 +115,6 @@ if st.session_state.view == "cart":
         for idx, (p, q) in enumerate(zip(parts, qtys), start=1):
             c0, c1, c2 = st.columns([4,2,1])
             with c0:
-                # description lookup same as before, but two-column display
                 meta = MetaData()
                 mpl  = Table("master_parts_list", meta, autoload_with=engine)
                 with engine.connect() as conn:
@@ -144,7 +122,6 @@ if st.session_state.view == "cart":
                         select([mpl.c.description]).where(mpl.c.part_no == p)
                     ).fetchone()
                     desc = row[0] if row else ""
-                # display
                 c_desc, _ = st.columns([7,3])
                 with c_desc:
                     st.markdown(f"**{p}**")
@@ -213,7 +190,7 @@ elif st.session_state.view == "checkout":
 
         if back_clicked:
             st.session_state.view = "cart"
-            save_session_state(); st.rerun()
+            st.rerun()
 
         if submit_clicked:
             errors = []
@@ -282,7 +259,7 @@ elif st.session_state.view == "checkout":
             with engine.begin() as conn:
                 conn.execute(eb.insert(), to_insert)
 
-            save_cart_to_disk()
+            # reset for new basket
             new_bid = gen_basket_id()
             st.session_state.cart_data = {
                 "basket_id":     [new_bid],
@@ -295,12 +272,8 @@ elif st.session_state.view == "checkout":
                 "postal_code":   [],
                 "address":       []
             }
-            save_cart_to_disk()
 
-            for path in (PICKLE_PATH, APP_STATE_PATH):
-                try: os.remove(path)
-                except FileNotFoundError: pass
-
+            # generate QR
             url = f"http://localhost:8501/Checkout🛒?id={bid}"
             qr_img = qrcode.make(url)
             buf = io.BytesIO(); qr_img.save(buf, format="PNG")
@@ -309,5 +282,3 @@ elif st.session_state.view == "checkout":
             st.session_state.show_qr   = True
 
             st.rerun()
-
-save_session_state()

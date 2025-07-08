@@ -21,14 +21,9 @@ from PIL import Image as PILImage
 from sqlalchemy import (select, create_engine, text, Table, Column, Integer, String, MetaData, ForeignKey, LargeBinary)
 from sqlalchemy.orm import sessionmaker
 
-username = "postgres.thqqtxvmzisznglpukwh"
-password = "ImehQhjJwRw2wnkO"
-host = "aws-0-ap-southeast-1.pooler.supabase.com"
-port = "5432"
-database = "postgres"
 
 # SQLAlchemy connection URL
-DATABASE_URL = f"postgresql://{username}:{password}@{host}:{port}/{database}"
+DATABASE_URL = f"postgresql://{st.secrets.username}:{st.secrets.password}@{st.secrets.host}:{st.secrets.port}/{st.secrets.database}"
 
 # Create engine
 engine = create_engine(DATABASE_URL)
