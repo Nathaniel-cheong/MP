@@ -67,7 +67,6 @@ def extract_model(pdf_path, brand):
             return match.group(1)
         return None
 
-# Test
 # ---------- TEXT EXTRACTION ----------
 def extract_text_from_pdf(pdf_path):
     all_text = ""
