@@ -153,8 +153,8 @@ if st.session_state.page_num == 0:
     for col, b in zip(cols[:-1], brands):
         with col:
             url = {
-                "Honda":"MP\frontend\streamlit_site\images\honda.svg",
-                "Yamaha":"MP\frontend\streamlit_site\images\Yamaha_Logo.jpg"
+                "Honda":"frontend/streamlit_site/images/honda.svg",
+                "Yamaha":"frontend/streamlit_site/images/Yamaha_Logo.jpg"
             }.get(b)
             if url:
                 st.image(url, width=250)
@@ -195,7 +195,7 @@ elif st.session_state.page_num == 1:
             st.stop()
         models = m2
 
-    DEFAULT_IMG = "MP\frontend\streamlit_site\images\default_bike.jpg"
+    DEFAULT_IMG = "frontend/streamlit_site/images/default_bike.jpg"
     cols = st.columns([1]*len(models) + [len(models)], gap="small")
     for col, m in zip(cols[:-1], models):
         with col:
