@@ -3,6 +3,7 @@ import streamlit as st
 from sqlalchemy import text
 from io import BytesIO
 from PIL import Image as PILImage
+from PIL import UnidentifiedImageError
 import os
 from streamlit_app import gen_basket_id
 
@@ -64,9 +65,9 @@ def add_to_cart(part: str):
 
 # ─── Brand-specific config + image cache ─────────────────────────────────
 BRAND_CONFIG = {
-    "Honda":  {"section_img_size": (350,200), "sections_per_row":3, "refs_per_row":5, "page4_layout":"top_image"},
-    "Yamaha": {"section_img_size": (250,350), "sections_per_row":4, "refs_per_row":4, "page4_layout":"side_image"},
-    "__default__": {"section_img_size": (250,350), "sections_per_row":4, "refs_per_row":4, "page4_layout":"side_image"},
+    "Honda":  {"section_img_size": (350,200), "sections_per_row":3, "refs_per_row":5, "page4_layout":"top_image", "model_img_size":(300,200)},
+    "Yamaha": {"section_img_size": (250,350), "sections_per_row":4, "refs_per_row":4, "page4_layout":"side_image", "model_img_size":(300,200)},
+    "__default__": {"section_img_size": (250,350), "sections_per_row":4, "refs_per_row":4, "page4_layout":"side_image", "model_img_size":(300,200)},
 }
 @st.cache_data(show_spinner=False)
 def process_image(img_bytes: bytes, size: tuple[int,int]):
@@ -196,6 +197,8 @@ elif st.session_state.page_num == 1:
         models = m2
 
     DEFAULT_IMG = "frontend/streamlit_site/images/default_bike.jpg"
+    cfg = BRAND_CONFIG.get(brand, BRAND_CONFIG["__default__"])
+    size = cfg["model_img_size"]
     cols = st.columns([1]*len(models) + [len(models)], gap="small")
     for col, m in zip(cols[:-1], models):
         with col:
@@ -205,9 +208,17 @@ elif st.session_state.page_num == 1:
             ).fetchone()
             blob = row[0] if row and row[0] is not None else None
             if blob:
-                st.image(BytesIO(blob), use_container_width=True)
+                raw = bytes(blob) if isinstance(blob, memoryview) else blob
+                try:
+                    img = process_image(raw, size)
+                except UnidentifiedImageError:
+                    pil = PILImage.open(DEFAULT_IMG).convert("RGB")
+                    img = pil.resize(size, PILImage.BICUBIC)
+                st.image(img, width=size[0])
             else:
-                st.image(DEFAULT_IMG, use_container_width=True)
+                pil = PILImage.open(DEFAULT_IMG).convert("RGB")
+                img = pil.resize(size, PILImage.BICUBIC)
+                st.image(img, width=size[0])    
 
             if st.button(m):
                 st.session_state.current_model = m
