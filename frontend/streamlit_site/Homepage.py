@@ -11,7 +11,7 @@ from streamlit_app import gen_basket_id
 st.set_page_config(layout="wide", initial_sidebar_state="expanded")
 st.markdown("""
     <style>
-      .stButton > button { width: 170px; height: 70px; font-size: 16px; }
+      .stButton > button { width: 150px; height: 70px; font-size: 16px; }
       .zoom-container img { position: sticky; top: 0; z-index: 100; }
       .hide-sidebar [data-testid="stSidebar"] { display: none; }
     </style>
