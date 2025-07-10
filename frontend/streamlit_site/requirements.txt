@@ -2,6 +2,5 @@ PyMuPDF==1.23.7
 ipython==8.12.3
 pandas==2.0.3
 pdfplumber==0.11.6
-Pillow==11.2.1
 SQLAlchemy==1.4.39
 streamlit==1.44.1
