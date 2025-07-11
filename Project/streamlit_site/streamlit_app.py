@@ -7,20 +7,8 @@ signin_page = st.Page(
     page="views/signin.py",
     title="Staff Sign In",
     icon="👤",
-)
-
-home_page = st.Page(
-    page="views/homepage.py",
-    title="Homepage",
-    icon="🏠",
     default=True,
 )
-
-# checkout_page = st.Page(
-#     page="views/checkout.py",
-#     title="Checkout",
-#     icon="🛒",
-# )
 
 manual_import_page = st.Page(
     page="views/manual_import.py",
@@ -74,23 +62,21 @@ if "user_type" not in st.session_state:
 # --- BASED ON ROLE ---
 if st.session_state.user_type == "guest":
     pg = st.navigation({
-        "User": [home_page, signin_page],
+        "User": [signin_page],
     })
 
 else:
     if st.session_state.user_type == "staff":
         pg = st.navigation({
-            "User": [home_page, signin_page],
-            "Staff": [manual_import_page, test_page, db_manage_page],
-            # "Dashboards": [dashboard_1_page, dashbaord_2_page],
+            "Staff": [manual_import_page, db_manage_page, test_page],
+            "Dashboards": [dashboard_1_page, dashbaord_2_page],
         })
 
     elif st.session_state.user_type == "admin":
         pg = st.navigation({
-            "User": [home_page, signin_page],
             "Staff": [manual_import_page, db_manage_page, test_page],
+            "Dashboards": [dashboard_1_page, dashbaord_2_page],
             "Admin": [acc_manage_page],
-            #"Dashboards": [dashboard_1_page, dashbaord_2_page],
         })
     with st.sidebar:
         if st.button("🔓 Log Out"):

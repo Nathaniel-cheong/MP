@@ -3,6 +3,7 @@ import re
 import time
 import pandas as pd
 import pdfplumber
+import numpy as np
 import fitz
 from IPython.display import Image
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -14,13 +15,6 @@ from datetime import datetime
 import streamlit as st
 from streamlit_cookies_controller import CookieController
 cookies = CookieController()
-
-# added from manual merge
-import qrcode
-from sqlalchemy.exc import ProgrammingError
-import pickle
-import random
-import string
 
 # --- DATABASE SETUP ---
 from sqlalchemy import (create_engine, select, update, delete, distinct, text, join, \
@@ -853,3 +847,4 @@ def advanced_display_image_previews(image_data, title, brand):
     with col3:
         if st.button("Next ➡️", key="image_next", disabled=(st.session_state.image_page >= total_pages - 1)):
             st.session_state.image_page += 1
+

@@ -1,8 +1,5 @@
-# if choose wrong brand to process pdf, pdf will be empty and pdf_section extraction will have error as missing data at 'section_id'
-# add error handling and pdf_edit through csv import
-
-# Fix xlsx import, image column become string instead of bytea
-# Add error handling for db
+#Delete than reimport, if error delete but no reimport, should be cancel delete if reimport fail
+# Error handling: Add a check for reimported pdf_id and before pdf_id
 from imports import *
 import io
 
@@ -43,7 +40,10 @@ if is_new_file:
         "pdf_id": "",
         "mpl_df": None,
         "pdf_section_df": None,
-        "pdf_log": None
+        "pdf_log": None,
+        "mpl_reimport_temp_df": None,
+        "pdf_section_reimport_temp_df": None,
+
     }
 
 file_state = st.session_state["file_states"][filename]
@@ -86,13 +86,15 @@ st.info("Please review all form fields. All values were auto-filled from the fil
 form_model = st.text_input("Model:", value=file_state["model"])
 form_batch_id = st.text_input("Batch ID:", value=file_state["batch_id"])
 form_year = st.text_input("Year:", value=file_state["year"])
-form_image = st.file_uploader("Upload the bike image", type=["jpg", "jpeg", "png"])
 
 form_filled = all([
     str(form_model).strip(),
     str(form_batch_id).strip(),
     str(form_year).strip()
 ])
+
+form_image = st.file_uploader("Upload the bike image", type=["jpg", "jpeg", "png"])
+image_bytes = form_image.read() if form_image else None
 
 form_accepted = False
 if not form_filled:
@@ -120,13 +122,13 @@ if file_state["preview_clicked"] and form_filled:
     file_state["pdf_id"] = file_state["model"] + "_" + file_state["batch_id"]
 
     parameters = [
-            uploaded_file.read(),
-            file_state["pdf_id"],
-            file_state["brand"],
-            file_state["year"],
-            file_state["model"],
-            file_state["batch_id"],
-            form_image
+        uploaded_file.read(),
+        file_state["pdf_id"],
+        file_state["brand"],
+        file_state["year"],
+        file_state["model"],
+        file_state["batch_id"],
+        image_bytes
     ]
 
     if file_state["brand"] == "Yamaha":
@@ -167,7 +169,7 @@ if file_state["preview_clicked"] and form_filled:
         st.download_button(
             label="📥 Download as Excel",
             data=buffer.getvalue(),
-            file_name="master_parts_list.xlsx",
+            file_name=f"master_parts_list_{file_state['mpl_df']['pdf_id'].iloc[0]}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="mpl_download_button"
         )
@@ -185,15 +187,21 @@ if file_state["preview_clicked"] and form_filled:
         if file_state["mpl_show_excel_reimport"]:
             with st.form("mpl_reimport_excel_form"):
                 st.markdown("Upload an Excel file to replace the current Master Parts List.")
-                uploaded_file = st.file_uploader("Upload Edited MPL Excel File (.xlsx)", type="xlsx")
+                mpl_excel_upload = st.file_uploader("Upload Edited MPL Excel File (.xlsx)", type="xlsx")
 
-                if uploaded_file:
+                if mpl_excel_upload:
                     try:
-                        new_df = pd.read_excel(uploaded_file, engine="openpyxl")
-                        file_state["mpl_reimport_temp_df"] = new_df
-                        st.success("✅ File uploaded. Please confirm import below.")
+                        new_df = pd.read_excel(mpl_excel_upload, engine="openpyxl")
+                        original_cols = set(file_state["mpl_df"].columns)
+                        new_cols = set(new_df.columns)
+
+                        if original_cols != new_cols:
+                            st.error(f"Column mismatch in uploaded file.Expected: {sorted(original_cols)} Got: {sorted(new_cols)}")
+                        else:
+                            file_state["mpl_reimport_temp_df"] = new_df
+                            st.success("File uploaded. Please confirm import below.")
                     except Exception as e:
-                        st.error(f"❌ Failed to read Excel file: {e}")
+                        st.error(f"Failed to read Excel file: {e}")
 
                 confirm_import = st.form_submit_button("✅ Confirm Import")
                 cancel_import = st.form_submit_button("❌ Cancel")
@@ -204,15 +212,15 @@ if file_state["preview_clicked"] and form_filled:
                         file_state["mpl_reimport_temp_df"] = None
                         file_state["mpl_excel_uploaded"] = True
                         file_state["mpl_show_excel_reimport"] = False
-                        st.success("✅ Excel file imported and table updated.")
+                        st.success("\u2705 Excel file imported and table updated.")
                         st.rerun()
                     else:
-                        st.warning("⚠️ Please upload a valid Excel file before confirming.")
+                        st.warning("\u26a0\ufe0f Please upload a valid Excel file before confirming.")
 
                 elif cancel_import:
                     file_state["mpl_reimport_temp_df"] = None
                     file_state["mpl_show_excel_reimport"] = False
-                    st.info("❌ Reimport cancelled.")
+                    st.info("\u274c Reimport cancelled.")
                     st.rerun()
 
         # --- Edit Mode Toggle ---
@@ -253,7 +261,7 @@ if file_state["preview_clicked"] and form_filled:
         st.download_button(
             label="📥 Download as Excel",
             data=buffer.getvalue(),
-            file_name="pdf_section_data.xlsx",
+            file_name=f"pdf_section_{file_state['mpl_df']['pdf_id'].iloc[0]}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="pdf_section_download_button"
         )
@@ -271,13 +279,19 @@ if file_state["preview_clicked"] and form_filled:
         if file_state["pdf_section_show_excel_reimport"]:
             with st.form("pdf_section_reimport_excel_form"):
                 st.markdown("Upload an Excel file to replace the current PDF Section table.")
-                uploaded_file = st.file_uploader("Upload Edited Excel File (.xlsx)", type="xlsx")
+                pdf_section_excel_upload = st.file_uploader("Upload Edited Excel File (.xlsx)", type="xlsx")
 
-                if uploaded_file:
+                if pdf_section_excel_upload:
                     try:
-                        new_df = pd.read_excel(uploaded_file, engine="openpyxl")
-                        file_state["pdf_section_reimport_temp_df"] = new_df
-                        st.success("✅ File uploaded. Please confirm import below.")
+                        new_df = pd.read_excel(pdf_section_excel_upload, engine="openpyxl")
+                        original_cols = set(file_state["pdf_section_df"].columns)
+                        new_cols = set(new_df.columns)
+
+                        if original_cols != new_cols:
+                            st.error(f"❌ Column mismatch in uploaded file.\n\nExpected: {sorted(original_cols)}\nGot: {sorted(new_cols)}")
+                        else:
+                            file_state["pdf_section_reimport_temp_df"] = new_df
+                            st.success("✅ File uploaded. Please confirm import below.")
                     except Exception as e:
                         st.error(f"❌ Failed to read Excel file: {e}")
 
@@ -332,20 +346,34 @@ if file_state["preview_clicked"] and form_filled:
         if st.button("Display Image Previews"):
             display_image_previews(file_state["pdf_section_df"], "", file_state["brand"])
 
-    # upload pdf_info, mpl_df, pdf_section_df, pdf_log
-    if st.button("Upload Data to Database"):
-        try:
-            # Start a new SQLAlchemy session (transactional scope)
-            Session = sessionmaker(bind=engine)
-            session = Session()
+    # --- Final Upload Button ---
+    if st.button("Upload Data to Database") or file_state.get("replace_pending"):
+        # Define required fields per table
+        required_fields = {
+            "pdf_info": ["pdf_id", "year", "brand", "model", "batch_id"],
+            "pdf_section_df": ["section_id", "section_no", "section_name", "cc", "pdf_id"],
+            "mpl_df": ["part_no", "description", "ref_no", "section_id", "pdf_id"],
+            "pdf_log": ["pdf_id", "account_id", "timestamp", "is_active", "is_current"]
+        }
 
-            with session.begin():
-                file_state["pdf_info"].to_sql("pdf_info", session.connection(), if_exists="append", index=False)
-                file_state["pdf_section_df"].to_sql("pdf_section", session.connection(), if_exists="append", index=False)
-                file_state["mpl_df"].to_sql("master_parts_list", session.connection(), if_exists="append", index=False)
-                file_state["pdf_log"].to_sql("pdf_log", session.connection(), if_exists="append", index=False)
+        # --- Check for missing/blank required fields ---
+        for df_key, required_cols in required_fields.items():
+            df = file_state.get(df_key)
+            if df is None:
+                st.error(f"❌ Missing table: {df_key}")
+                st.stop()
 
-            st.success("Upload completed successfully.")
+            for col in required_cols:
+                if col not in df.columns:
+                    st.error(f"❌ '{df_key}' is missing required column '{col}'")
+                    st.stop()
 
-        except Exception as e:
-            st.error(f"❌ Upload failed: {e}")
+                # Check for NaN or blank/whitespace strings
+                invalid_rows = df[col].isna() | df[col].astype(str).str.strip().eq("")
+                if invalid_rows.any():
+                    bad_indices = df[invalid_rows].index.tolist()
+                    st.error(f"❌ {df_key} → Column '{col}' is empty/null in rows: {bad_indices}")
+                    st.stop()
+        
+        # convert columns from str to specified
+        # upload > replace if exist

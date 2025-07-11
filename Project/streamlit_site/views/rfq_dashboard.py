@@ -1,3 +1,3 @@
-from Project.streamlit_site.imports_old import *
+from imports import *
 
 st.title("RFQ Dashboard")
