@@ -1,7 +1,16 @@
-#Delete than reimport, if error delete but no reimport, should be cancel delete if reimport fail
-# Error handling: Add a check for reimported pdf_id and before pdf_id
+'''
+reimport as excel causes image column to be messed up > cannot upload to db
+bugs:
+- bike image reimport auto updates to table
+- button for upload not smooth
+improvements:
+- click to vie image, click again to close
+- button colors
+'''
+
 from imports import *
 import io
+cookies = CookieController()
 
 st.title("Manual Imports")
 
@@ -196,31 +205,38 @@ if file_state["preview_clicked"] and form_filled:
                         new_cols = set(new_df.columns)
 
                         if original_cols != new_cols:
-                            st.error(f"Column mismatch in uploaded file.Expected: {sorted(original_cols)} Got: {sorted(new_cols)}")
+                            st.error(f"❌ Column mismatch in uploaded file.\n\nExpected: {sorted(original_cols)}\nGot: {sorted(new_cols)}")
                         else:
-                            file_state["mpl_reimport_temp_df"] = new_df
-                            st.success("File uploaded. Please confirm import below.")
+                            # ✅ Check if pdf_id matches the one in form
+                            uploaded_pdf_ids = new_df["pdf_id"].dropna().unique()
+                            current_pdf_id = file_state["pdf_id"]
+
+                            if len(uploaded_pdf_ids) != 1 or uploaded_pdf_ids[0] != current_pdf_id:
+                                st.error(f"❌ PDF ID mismatch.\nExpected: '{current_pdf_id}'\nFound in file: {uploaded_pdf_ids}")
+                            else:
+                                file_state["mpl_reimport_temp_df"] = new_df
+                                st.success("✅ File uploaded. Please confirm import below.")
                     except Exception as e:
-                        st.error(f"Failed to read Excel file: {e}")
+                        st.error(f"❌ Failed to read Excel file: {e}")
 
                 confirm_import = st.form_submit_button("✅ Confirm Import")
                 cancel_import = st.form_submit_button("❌ Cancel")
 
                 if confirm_import:
-                    if file_state["mpl_reimport_temp_df"] is not None:
+                    if file_state.get("mpl_reimport_temp_df") is not None:
                         file_state["mpl_df"] = file_state["mpl_reimport_temp_df"]
                         file_state["mpl_reimport_temp_df"] = None
                         file_state["mpl_excel_uploaded"] = True
                         file_state["mpl_show_excel_reimport"] = False
-                        st.success("\u2705 Excel file imported and table updated.")
+                        st.success("✅ Excel file imported and table updated.")
                         st.rerun()
                     else:
-                        st.warning("\u26a0\ufe0f Please upload a valid Excel file before confirming.")
+                        st.warning("⚠️ Please upload a valid Excel file before confirming.")
 
                 elif cancel_import:
                     file_state["mpl_reimport_temp_df"] = None
                     file_state["mpl_show_excel_reimport"] = False
-                    st.info("\u274c Reimport cancelled.")
+                    st.info("❌ Reimport cancelled.")
                     st.rerun()
 
         # --- Edit Mode Toggle ---
@@ -290,8 +306,16 @@ if file_state["preview_clicked"] and form_filled:
                         if original_cols != new_cols:
                             st.error(f"❌ Column mismatch in uploaded file.\n\nExpected: {sorted(original_cols)}\nGot: {sorted(new_cols)}")
                         else:
-                            file_state["pdf_section_reimport_temp_df"] = new_df
-                            st.success("✅ File uploaded. Please confirm import below.")
+                            # ✅ Check pdf_id match
+                            uploaded_pdf_ids = new_df["pdf_id"].dropna().unique()
+                            current_pdf_id = file_state["pdf_id"]
+
+                            if len(uploaded_pdf_ids) != 1 or uploaded_pdf_ids[0] != current_pdf_id:
+                                st.error(f"❌ PDF ID mismatch.\nExpected: '{current_pdf_id}'\nFound in file: {uploaded_pdf_ids}")
+                            else:
+                                file_state["pdf_section_reimport_temp_df"] = new_df
+                                st.success("✅ File uploaded. Please confirm import below.")
+
                     except Exception as e:
                         st.error(f"❌ Failed to read Excel file: {e}")
 
@@ -299,7 +323,7 @@ if file_state["preview_clicked"] and form_filled:
                 cancel_import = st.form_submit_button("❌ Cancel")
 
                 if confirm_import:
-                    if file_state["pdf_section_reimport_temp_df"] is not None:
+                    if file_state.get("pdf_section_reimport_temp_df") is not None:
                         file_state["pdf_section_df"] = file_state["pdf_section_reimport_temp_df"]
                         file_state["pdf_section_reimport_temp_df"] = None
                         file_state["pdf_section_excel_uploaded"] = True
@@ -314,6 +338,7 @@ if file_state["preview_clicked"] and form_filled:
                     file_state["pdf_section_show_excel_reimport"] = False
                     st.info("❌ Reimport cancelled.")
                     st.rerun()
+
 
         # Button to toggle Edit Table UI
         if st.button("✏️ Edit Table", key="pdf_section_edit_button"):
@@ -375,5 +400,99 @@ if file_state["preview_clicked"] and form_filled:
                     st.error(f"❌ {df_key} → Column '{col}' is empty/null in rows: {bad_indices}")
                     st.stop()
         
-        # convert columns from str to specified
-        # upload > replace if exist
+        # Convert data types
+        try:
+            file_state["pdf_info"] = file_state["pdf_info"].astype({
+                "pdf_id": str,
+                "year": int,
+                "brand": str,
+                "model": str,
+                "batch_id": str,
+            })
+
+            file_state["pdf_section_df"] = file_state["pdf_section_df"].astype({
+                "section_id": str,
+                "section_no": str,
+                "section_name": str,
+                "cc": str,
+                "pdf_id": str
+            })
+
+            file_state["mpl_df"] = file_state["mpl_df"].astype({
+                "part_no": str,
+                "description": str,
+                "ref_no": str,
+                "section_id": str,
+                "pdf_id": str
+            })
+
+            file_state["pdf_log"] = file_state["pdf_log"].astype({
+                "pdf_id": str,
+                "account_id": str,
+                "timestamp": str,
+                "is_active": int,
+                "is_current": int
+            })
+
+        except Exception as e:
+            st.error(f"❌ Failed to convert column types: {e}")
+            st.stop()
+
+        # --- Check if pdf_id already exists ---
+        pdf_id = file_state["pdf_info"]["pdf_id"].iloc[0]
+        with engine.connect() as conn:
+            existing = conn.execute(
+                text("SELECT 1 FROM pdf_info WHERE pdf_id = :pdf_id LIMIT 1"),
+                {"pdf_id": pdf_id}
+            ).fetchone()
+
+        # --- If exists and not confirmed yet → prompt ---
+        if existing and not file_state.get("replace_confirmed"):
+            file_state["replace_pending"] = True
+            st.warning(f"⚠️ PDF ID '{pdf_id}' already exists in the database.")
+
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                if st.button("⚠️ Confirm Replace Existing Entry"):
+                    file_state["replace_confirmed"] = True
+                    file_state["replace_pending"] = False
+                    st.rerun()
+            with col2:
+                if st.button("❌ Cancel Upload"):
+                    file_state["replace_pending"] = False
+                    st.info("Upload cancelled.")
+                    st.stop()
+            st.stop()
+
+        # --- If confirmed → delete old entries ---
+        if existing and file_state.get("replace_confirmed"):
+            try:
+                with engine.begin() as conn:
+                    for table in ["master_parts_list", "pdf_section", "pdf_log", "pdf_info"]:
+                        conn.execute(text(f"DELETE FROM {table} WHERE pdf_id = :pdf_id"), {"pdf_id": pdf_id})
+                st.info(f"🗑️ Deleted existing records for PDF ID '{pdf_id}'.")
+            except Exception as e:
+                st.error(f"❌ Failed to delete existing data: {e}")
+                st.stop()
+
+        # --- Attempt Insert ---
+        try:
+            Session = sessionmaker(bind=engine)
+            session = Session()
+
+            with session.begin():
+                file_state["pdf_info"].to_sql("pdf_info", session.connection(), if_exists="append", index=False)
+                file_state["pdf_section_df"].to_sql("pdf_section", session.connection(), if_exists="append", index=False)
+                file_state["mpl_df"].to_sql("master_parts_list", session.connection(), if_exists="append", index=False)
+                file_state["pdf_log"].to_sql("pdf_log", session.connection(), if_exists="append", index=False)
+
+            st.success("✅ Upload completed successfully.")
+
+            # Clean up flags
+            file_state["replace_confirmed"] = False
+            file_state["replace_pending"] = False
+
+        except Exception as e:
+            st.error(f"❌ Upload failed: {e}")
+            st.warning("⚠️ No changes were made to the database.")
+            st.stop()
