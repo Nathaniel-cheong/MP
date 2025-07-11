@@ -2,6 +2,8 @@
 # Edit mpl list (those without pdf_info, logs, and sections due to cascade delete)
 
 from imports import *
+cookies = CookieController()
+
 st.title("Manage Database")
 
 for key in ["edit_page", "edit_page_mpl_list", "edit_page_pdf_info", "edit_page_pdf_section"]:

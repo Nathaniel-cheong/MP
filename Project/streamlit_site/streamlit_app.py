@@ -1,4 +1,5 @@
 from imports import *
+cookies = CookieController()
 
 st.set_page_config(layout="wide")
 
