@@ -4,6 +4,34 @@ from sqlalchemy import (
 )
 from imports import engine, st, io, qrcode
 from streamlit_app import gen_basket_id
+import json
+import datetime
+
+# ─── PAGE CONFIG ──────────────────────────────────────────────────────────
+st.set_page_config(
+    layout="wide",
+    initial_sidebar_state="collapsed" if "id" in st.query_params else "expanded",
+)
+
+# ─── READ EXISTING COOKIE ───────────────────────────────────────────────────
+from streamlit_cookies_manager import EncryptedCookieManager
+cookies = EncryptedCookieManager(prefix="my_app/", password="your-32-byte-long-secret-key-here")
+if not cookies.ready():
+    st.stop()
+
+visitor_id = cookies.get("visitor_id")
+if visitor_id is None:
+    st.error("No visitor_id found! Please start your session on the Homepage.")
+    st.stop()
+st.session_state.setdefault("visitor_id", visitor_id)
+
+# ─── LOAD CART FROM COOKIE ─────────────────────────────────────────────────
+cart_json = cookies.get("cart_state")
+if cart_json:
+    try:
+        st.session_state.cart_data = json.loads(cart_json)
+    except Exception:
+        pass
 
 # ─── CACHING SETUP FOR TABLE REFLECTION ────────────────────────────────────
 @st.cache_resource(show_spinner=False)
@@ -20,15 +48,9 @@ def get_part_to_id_map():
         rows = conn.execute(select([mpl.c.part_no, mpl.c.mpl_id])).fetchall()
     return {r[0]: r[1] for r in rows}
 
-
-# ─── Detect QR-link mode & set_page_config ────────────────────────────────
+# ─── Detect QR-link mode ───────────────────────────────────────────────────
 qp = st.query_params
 is_qr_view = "id" in qp
-
-st.set_page_config(
-    layout="wide",
-    initial_sidebar_state="collapsed" if is_qr_view else "expanded",
-)
 
 # ─── Initialize cart_data ─────────────────────────────────────────────────
 if "cart_data" not in st.session_state:
@@ -37,6 +59,7 @@ if "cart_data" not in st.session_state:
         "basket_id":     [new_id],
         "part_no":       [[]],
         "quantity":      [[]],
+        "brand":       [[]],
         "purchase_type": [],
         "customer_name": [],
         "contact":       [],
@@ -45,7 +68,6 @@ if "cart_data" not in st.session_state:
         "address":       []
     }
 cart = st.session_state.cart_data
-
 
 # ─── QR-only detail view ─────────────────────────────────────────────────
 if is_qr_view:
@@ -80,7 +102,6 @@ if is_qr_view:
         st.info("No items found for this basket.")
     st.stop()
 
-
 # ─── QR confirmation block ────────────────────────────────────────────────
 if st.session_state.get("show_qr", False):
     buf = io.BytesIO(st.session_state.qr_bytes)
@@ -92,31 +113,35 @@ if st.session_state.get("show_qr", False):
     st.markdown("### Once completed please refresh the page")
     st.stop()
 
-
 # ─── View state defaults ─────────────────────────────────────────────────
 st.session_state.setdefault("view", "cart")
 st.session_state.setdefault("checkout_id", None)
-
 
 # ─── Cart callbacks ──────────────────────────────────────────────────────
 def update_quantity(idx: int):
     parts = cart["part_no"][0]
     qtys  = cart["quantity"][0]
+    brands = cart["item_brand"][0]
+    models = cart["item_model"][0]
     new_q = st.session_state[f"qty_input_{idx}"]
     i = idx - 1
     if new_q <= 0:
         parts.pop(i); qtys.pop(i)
+        brands.pop(i); models.pop(i)
     else:
         qtys[i] = new_q
+    cookies["cart_state"] = json.dumps(st.session_state.cart_data)
 
 def remove_entire(part: str):
     parts = cart["part_no"][0]; qtys = cart["quantity"][0]
+    brands = cart["item_brand"][0]; models = cart["item_model"][0]
     i = parts.index(part)
     parts.pop(i); qtys.pop(i)
+    brands.pop(i); models.pop(i)
+    cookies["cart_state"] = json.dumps(st.session_state.cart_data)
 
 def show_checkout():
     st.session_state.view = "checkout"
-
 
 # ─── Cart & checkout UI ─────────────────────────────────────────────────
 st.title("🛒 Your Shopping Cart")
@@ -150,7 +175,6 @@ if st.session_state.view == "cart":
         st.button("Checkout", on_click=show_checkout)
     else:
         st.info("Your basket is currently empty.")
-
 
 elif st.session_state.view == "checkout":
     if st.session_state.checkout_id is not None:
@@ -215,24 +239,43 @@ elif st.session_state.view == "checkout":
                 for e in errors: st.error(e)
                 st.stop()
 
-            _, mpl = reflect_tables()
+            meta = MetaData()
+
+            # reflect the existing master_parts_list into our new MetaData
+            mpl = Table(
+                "master_parts_list",
+                meta,
+                autoload_with=engine,
+                autoload=True
+            )
+
+            # now define ebasket in that same MetaData
             eb = Table(
-                "ebasket", MetaData(),
+                "ebasket",
+                meta,
                 Column("item_id", Integer, primary_key=True, autoincrement=True),
                 Column("basket_id", String, nullable=False),
-                Column("mpl_id", Integer, ForeignKey("master_parts_list.mpl_id"), nullable=False),
+                Column("mpl_id", Integer, ForeignKey(mpl.c.mpl_id), nullable=False),
                 Column("part_no", String, nullable=False),
                 Column("quantity", Integer),
-                Column("order_date", Date, server_default=text("CURRENT_DATE"), nullable=False),
+                Column(
+                    "order_date",
+                    Date,
+                    server_default=text("CURRENT_DATE"),
+                    nullable=False
+                ),
                 Column("purchase_type", String),
                 Column("customer_name", String),
                 Column("contact", String),
                 Column("email", String),
                 Column("postal_code", String),
                 Column("address", String),
-                UniqueConstraint("basket_id","mpl_id",name="uix_basket_mpl")
+                UniqueConstraint("basket_id", "mpl_id", name="uix_basket_mpl")
             )
-            eb.metadata.create_all(engine, tables=[eb])
+
+            # create the table — since meta knows about master_parts_list,
+            # the ForeignKey can resolve correctly
+            meta.create_all(engine, tables=[eb])
 
             part_to_id = get_part_to_id_map()
             bid = cart["basket_id"][0]
@@ -258,9 +301,60 @@ elif st.session_state.view == "checkout":
             with engine.begin() as conn:
                 conn.execute(eb.insert(), to_insert)
 
-            new_bid = gen_basket_id()
+            # ─── NEW: append to purchase_history cookie ────────────────
+            history_entry = {
+                "basket_id": bid,
+                "order_date": datetime.date.today().isoformat(),
+                "items": []
+            }
+
+            parts  = cart["part_no"][0]
+            qtys   = cart["quantity"][0]
+            brands = cart["item_brand"][0]
+            models = cart["item_model"][0]
+
+            for p, q, b, m in zip(parts, qtys, brands, models):
+                history_entry["items"].append({
+                    "part_no":  p,
+                    "quantity": q,
+                    "brand":    b,
+                    "model":    m
+                })
+
+            # read existing history cookie
+            hist_json = cookies.get("purchase_history", "[]")
+            try:
+                history = json.loads(hist_json)
+            except Exception:
+                history = []
+
+            history.append(history_entry)
+            cookies["purchase_history"] = json.dumps(history)
+            
+            # ─── regenerate QR code and show it ────────────────────────
+            url = f"http://localhost:8501/Checkout🛒?id={bid}"
+            qr_img = qrcode.make(url)
+            buf = io.BytesIO(); qr_img.save(buf, format="PNG")
+            st.session_state.qr_bytes  = buf.getvalue()
+            st.session_state.order_url = url
+
+            # ─── CLEAR persisted view + cart cookies ───────────────────
+            for key in ("view_state", "cart_state"):
+                # overwrite the cookie to empty so the browser will expire it
+                cookies[key] = ""
+            # now write that change back to the browser
+            cookies.save()
+            # ─── RESET session_state navigation & cart ────────────────
+            st.session_state.show_qr   = True
+            st.session_state.page_num        = 0
+            st.session_state.current_brand   = None
+            st.session_state.current_model   = None
+            st.session_state.current_cc      = None
+            st.session_state.current_section = None
+            st.session_state.current_ref     = None
+
             st.session_state.cart_data = {
-                "basket_id":     [new_bid],
+                "basket_id":     [gen_basket_id()],
                 "part_no":       [[]],
                 "quantity":      [[]],
                 "purchase_type": [],
@@ -270,12 +364,5 @@ elif st.session_state.view == "checkout":
                 "postal_code":   [],
                 "address":       []
             }
-
-            url = f"http://localhost:8501/Checkout🛒?id={bid}"
-            qr_img = qrcode.make(url)
-            buf = io.BytesIO(); qr_img.save(buf, format="PNG")
-            st.session_state.qr_bytes  = buf.getvalue()
-            st.session_state.order_url = url
-            st.session_state.show_qr   = True
 
             st.rerun()
