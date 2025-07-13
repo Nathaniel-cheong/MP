@@ -6,14 +6,13 @@ from PIL import Image as PILImage, UnidentifiedImageError
 from streamlit_app import gen_basket_id
 import uuid, json
 from streamlit_cookies_manager import EncryptedCookieManager
-from streamlit.errors import StreamlitAPIException
 
 # ─── PAGE CONFIG & GLOBAL CSS ─────────────────────────────────────────────
 try:
     st.set_page_config(layout="wide", initial_sidebar_state="expanded")
-except StreamlitAPIException:
-    # already ran set_page_config somewhere else; ignore
+except Exception:
     pass
+
 st.markdown("""
     <style>
       .stButton > button { width: 150px; height: 70px; font-size: 16px; }
