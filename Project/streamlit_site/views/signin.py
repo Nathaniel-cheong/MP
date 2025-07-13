@@ -1,6 +1,11 @@
 from imports import *
 cookies = CookieController()
 
+if "user_type" not in st.session_state:
+    st.session_state.user_type = cookies.get("user_type")
+if "user_name" not in st.session_state:
+    st.session_state.user_name = cookies.get("user_name")
+
 st.title("Staff Log In")
 
 if st.button("Staff: Tom"):

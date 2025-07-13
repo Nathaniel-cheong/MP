@@ -1,16 +1,18 @@
 '''
-reimport as excel causes image column to be messed up > cannot upload to db
 bugs:
 - bike image reimport auto updates to table
 - button for upload not smooth
-improvements:
-- click to vie image, click again to close
-- button colors
 '''
 
 from imports import *
 import io
 cookies = CookieController()
+
+# Rehydrate session state from cookies
+if "user_type" not in st.session_state:
+    st.session_state.user_type = cookies.get("user_type")
+if "user_name" not in st.session_state:
+    st.session_state.user_name = cookies.get("user_name")
 
 st.title("Manual Imports")
 
@@ -164,6 +166,7 @@ if file_state["preview_clicked"] and form_filled:
 
     # --- DISPLAY ---
     if file_state["pdf_info"] is not None:
+        st.divider()
         st.subheader("PDF Information Preview")
         st.dataframe(file_state["pdf_info"], use_container_width=True)
 
@@ -273,7 +276,9 @@ if file_state["preview_clicked"] and form_filled:
 
         # Download Table as Xlsx Button
         buffer = io.BytesIO()
-        file_state["pdf_section_df"].to_excel(buffer, index=False)
+        # Remove image column before export
+        export_section_df = file_state["pdf_section_df"].drop(columns=["section_image"], errors="ignore")
+        export_section_df.to_excel(buffer, index=False)
         st.download_button(
             label="📥 Download as Excel",
             data=buffer.getvalue(),
@@ -300,7 +305,7 @@ if file_state["preview_clicked"] and form_filled:
                 if pdf_section_excel_upload:
                     try:
                         new_df = pd.read_excel(pdf_section_excel_upload, engine="openpyxl")
-                        original_cols = set(file_state["pdf_section_df"].columns)
+                        original_cols = set(file_state["pdf_section_df"].drop(columns=["section_image"], errors="ignore").columns)
                         new_cols = set(new_df.columns)
 
                         if original_cols != new_cols:
@@ -313,6 +318,10 @@ if file_state["preview_clicked"] and form_filled:
                             if len(uploaded_pdf_ids) != 1 or uploaded_pdf_ids[0] != current_pdf_id:
                                 st.error(f"❌ PDF ID mismatch.\nExpected: '{current_pdf_id}'\nFound in file: {uploaded_pdf_ids}")
                             else:
+                                # Join back image column using section_id
+                                if "section_image" in file_state["pdf_section_df"].columns:
+                                    images_df = file_state["pdf_section_df"][["section_id", "section_image"]]
+                                    new_df = new_df.merge(images_df, on="section_id", how="left")
                                 file_state["pdf_section_reimport_temp_df"] = new_df
                                 st.success("✅ File uploaded. Please confirm import below.")
 
@@ -368,11 +377,27 @@ if file_state["preview_clicked"] and form_filled:
 
         # Image Preview UI
         st.subheader("Preview: Parts Images")
-        if st.button("Display Image Previews"):
+
+        # Initialize toggle state
+        if "show_image_previews" not in st.session_state:
+            st.session_state["show_image_previews"] = False
+
+        # Show/Hide button with immediate rerun
+        if st.button("🔍 Display Image Previews" if not st.session_state["show_image_previews"] else "❌ Hide Image Previews", key="toggle_preview_btn"):
+            st.session_state["show_image_previews"] = not st.session_state["show_image_previews"]
+            st.rerun()  # Force rerun immediately after state change
+
+        # Conditionally show images
+        if st.session_state["show_image_previews"]:
+            st.divider()
             display_image_previews(file_state["pdf_section_df"], "", file_state["brand"])
+            st.divider()
+
+    st.divider()
+    checked_tables = st.checkbox("Confirm", key="confirm_tables")
 
     # --- Final Upload Button ---
-    if st.button("Upload Data to Database") or file_state.get("replace_pending"):
+    if st.button("Upload Data to Database", disabled=not checked_tables) or file_state.get("replace_pending"):
         # Define required fields per table
         required_fields = {
             "pdf_info": ["pdf_id", "year", "brand", "model", "batch_id"],

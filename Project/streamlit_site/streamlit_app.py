@@ -23,12 +23,6 @@ db_manage_page = st.Page(
     icon="🛢️",
 )
 
-db_manage_page = st.Page(
-    page="views/manage_database.py",
-    title="Manage Database",
-    icon="🛢️",
-)
-
 acc_manage_page = st.Page(
     page="views/manage_accounts.py",
     title="Manage Accounts",
@@ -81,8 +75,10 @@ else:
         })
     with st.sidebar:
         if st.button("🔓 Log Out"):
-            cookies.set("user_type", "guest")
-            st.session_state.user_type = "guest"
+            cookies.delete("user_type")
+            cookies.delete("user_name")
+            st.session_state.clear()
+            st.success("Logged out.")
             st.rerun()
 
 with st.sidebar:
