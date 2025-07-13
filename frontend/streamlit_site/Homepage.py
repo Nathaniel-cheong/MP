@@ -6,12 +6,16 @@ from PIL import Image as PILImage, UnidentifiedImageError
 from streamlit_app import gen_basket_id
 import uuid, json
 from streamlit_cookies_manager import EncryptedCookieManager
+from pathlib import Path
 
 # ─── PAGE CONFIG & GLOBAL CSS ─────────────────────────────────────────────
 try:
     st.set_page_config(layout="wide", initial_sidebar_state="expanded")
 except Exception:
     pass
+
+HERE = Path(__file__).parent
+IMAGE_DIR = HERE / "images"
 
 st.markdown("""
     <style>
@@ -273,8 +277,8 @@ if curr == 0:
     cols = st.columns([1]*len(brands)+[len(brands)], gap="small")
     for col,b in zip(cols[:-1], brands):
         with col:
-            url = { "Honda":"MP/frontend/streamlit_site/images/honda.svg", "Yamaha":"MP/frontend/streamlit_site/images/Yamaha_Logo.jpg" }.get(b)
-            if url: st.image(url, width=250)
+            url = { "Honda":str(IMAGE_DIR / "honda.svg"), "Yamaha":str(IMAGE_DIR / "Yamaha_Logo.jpg") }.get(b)
+            if url and Path(url).exists(): st.image(url, width=250)
             else:   st.write(b)
             st.button(b, on_click=go_to_brand, args=(b,), key=f"brand_{b}")
 
