@@ -16,6 +16,7 @@ except Exception:
 
 HERE = Path(__file__).parent
 IMAGE_DIR = HERE / "images"
+DEFAULT_MODEL_IMG = IMAGE_DIR / "default_bike.jpg"
 
 st.markdown("""
     <style>
@@ -303,7 +304,7 @@ elif curr == 1:
             st.info(f"No {br} model “{search}.”"); st.stop()
     cfg = BRAND_CONFIG.get(br, BRAND_CONFIG["__default__"])
     size = cfg["model_img_size"]
-    DEFAULT_IMG = "MP/frontend/streamlit_site/images/default_bike.jpg"
+    DEFAULT_IMG = DEFAULT_MODEL_IMG
     cols = st.columns([1]*len(models)+[len(models)], gap="small")
     for col,m in zip(cols[:-1], models):
         with col:
@@ -317,11 +318,11 @@ elif curr == 1:
                 try:
                     img = process_image(raw, size)
                 except UnidentifiedImageError:
-                    pil = PILImage.open(DEFAULT_IMG).convert("RGB")
+                    pil = PILImage.open(str(DEFAULT_IMG)).convert("RGB")
                     img = pil.resize(size, PILImage.BICUBIC)
                 st.image(img, width=size[0])
             else:
-                pil = PILImage.open(DEFAULT_IMG).convert("RGB")
+                pil = PILImage.open(str(DEFAULT_IMG)).convert("RGB")
                 img = pil.resize(size, PILImage.BICUBIC)
                 st.image(img, width=size[0])
             st.button(m, on_click=go_to_model, args=(m,), key=f"mdl_{m}")
