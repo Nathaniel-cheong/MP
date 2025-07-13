@@ -223,6 +223,18 @@ for k,v in {
 }.items():
     st.session_state.setdefault(k, v)
 
+# if cart_data doesn’t exist yet, give it the new full shape
+if "cart_data" not in st.session_state:
+    st.session_state.cart_data = {
+        "basket_id":[gen_basket_id()],
+        "part_no":[[]],
+        "quantity":[[]],
+        "item_brand":    [[]],
+        "item_model":    [[]],
+        "purchase_type":[], "customer_name":[], "contact":[],
+        "email":[], "postal_code":[], "address":[]
+    }
+
 # restore cart_data from cookie
 if "cart_state" in cookies:
     try:
@@ -236,17 +248,6 @@ if "item_brand" not in cart:
     cart["item_brand"] = [[] for _ in range(n)]
 if "item_model" not in cart:
     cart["item_model"] = [[] for _ in range(n)]
-
-if "cart_data" not in st.session_state:
-    st.session_state.cart_data = {
-        "basket_id":[gen_basket_id()],
-        "part_no":[[]],
-        "quantity":[[]],
-        "item_brand":    [[]],
-        "item_model":    [[]],
-        "purchase_type":[], "customer_name":[], "contact":[],
-        "email":[], "postal_code":[], "address":[]
-    }
 
 # ─── OPTIONAL COOKIE DEBUG ─────────────────────────────────────────────────
 with st.sidebar:
