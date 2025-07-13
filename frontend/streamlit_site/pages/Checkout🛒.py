@@ -332,7 +332,7 @@ elif st.session_state.view == "checkout":
             cookies["purchase_history"] = json.dumps(history)
             
             # ─── regenerate QR code and show it ────────────────────────
-            url = f"http://localhost:8501/Checkout🛒?id={bid}"
+            url = f"https://mpams-frontend.streamlit.app/Checkout%F0%9F%9B%92?id={bid}"
             qr_img = qrcode.make(url)
             buf = io.BytesIO(); qr_img.save(buf, format="PNG")
             st.session_state.qr_bytes  = buf.getvalue()
