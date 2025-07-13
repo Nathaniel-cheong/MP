@@ -6,12 +6,13 @@ from PIL import Image as PILImage, UnidentifiedImageError
 from streamlit_app import gen_basket_id
 import uuid, json
 from streamlit_cookies_manager import EncryptedCookieManager
-from streamlit.errors import StreamlitSetPageConfigMustBeFirstCommandError
+from streamlit.errors import StreamlitAPIException
 
 # ─── PAGE CONFIG & GLOBAL CSS ─────────────────────────────────────────────
 try:
     st.set_page_config(layout="wide", initial_sidebar_state="expanded")
-except StreamlitSetPageConfigMustBeFirstCommandError:
+except StreamlitAPIException:
+    # already ran set_page_config somewhere else; ignore
     pass
 st.markdown("""
     <style>
