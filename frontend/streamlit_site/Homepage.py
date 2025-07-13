@@ -273,7 +273,7 @@ if curr == 0:
     cols = st.columns([1]*len(brands)+[len(brands)], gap="small")
     for col,b in zip(cols[:-1], brands):
         with col:
-            url = { "Honda":"frontend\streamlit_site\images\honda.svg", "Yamaha":"frontend\streamlit_site\images\Yamaha_Logo.jpg" }.get(b)
+            url = { "Honda":"MP\frontend\streamlit_site\images\honda.svg", "Yamaha":"MP\frontend\streamlit_site\images\Yamaha_Logo.jpg" }.get(b)
             if url: st.image(url, width=250)
             else:   st.write(b)
             st.button(b, on_click=go_to_brand, args=(b,), key=f"brand_{b}")
@@ -299,7 +299,7 @@ elif curr == 1:
             st.info(f"No {br} model “{search}.”"); st.stop()
     cfg = BRAND_CONFIG.get(br, BRAND_CONFIG["__default__"])
     size = cfg["model_img_size"]
-    DEFAULT_IMG = "frontend/streamlit_site/images/default_bike.jpg"
+    DEFAULT_IMG = "MP/frontend/streamlit_site/images/default_bike.jpg"
     cols = st.columns([1]*len(models)+[len(models)], gap="small")
     for col,m in zip(cols[:-1], models):
         with col:
