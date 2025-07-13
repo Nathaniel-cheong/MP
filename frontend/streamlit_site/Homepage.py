@@ -29,8 +29,11 @@ st.markdown("""
 # ─── COOKIE SETUP ──────────────────────────────────────────────────────────
 cookies = EncryptedCookieManager(
     prefix="my_app/",
-    password="your-32-byte-long-secret-key-here"
+    password="your-32-byte-long-secret-key-here",
+    secure=False,
+    sameSite="Lax",
 )
+
 if not cookies.ready():
     st.stop()
 
