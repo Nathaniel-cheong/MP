@@ -273,7 +273,7 @@ if curr == 0:
     cols = st.columns([1]*len(brands)+[len(brands)], gap="small")
     for col,b in zip(cols[:-1], brands):
         with col:
-            url = { "Honda":"MP\frontend\streamlit_site\images\honda.svg", "Yamaha":"MP\frontend\streamlit_site\images\Yamaha_Logo.jpg" }.get(b)
+            url = { "Honda":"MP/frontend/streamlit_site/images/honda.svg", "Yamaha":"MP/frontend/streamlit_site/images/Yamaha_Logo.jpg" }.get(b)
             if url: st.image(url, width=250)
             else:   st.write(b)
             st.button(b, on_click=go_to_brand, args=(b,), key=f"brand_{b}")
