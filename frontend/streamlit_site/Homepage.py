@@ -229,6 +229,13 @@ if "cart_state" in cookies:
         st.session_state.cart_data = json.loads(cookies.get("cart_state"))
     except:
         pass
+# ─── make sure old carts get the new fields ──────────────────────────────────────
+cart = st.session_state.cart_data
+n = len(cart["basket_id"])
+if "item_brand" not in cart:
+    cart["item_brand"] = [[] for _ in range(n)]
+if "item_model" not in cart:
+    cart["item_model"] = [[] for _ in range(n)]
 
 if "cart_data" not in st.session_state:
     st.session_state.cart_data = {
