@@ -6,13 +6,18 @@ from PIL import Image as PILImage, UnidentifiedImageError
 from streamlit_app import gen_basket_id
 import uuid, json
 from streamlit_cookies_manager import EncryptedCookieManager
-from streamlit.errors import StreamlitSetPageConfigMustBeFirstCommandError
+from pathlib import Path
 
 # ─── PAGE CONFIG & GLOBAL CSS ─────────────────────────────────────────────
 try:
     st.set_page_config(layout="wide", initial_sidebar_state="expanded")
-except StreamlitSetPageConfigMustBeFirstCommandError:
+except Exception:
     pass
+
+HERE = Path(__file__).parent
+IMAGE_DIR = HERE / "images"
+DEFAULT_MODEL_IMG = IMAGE_DIR / "default_bike.jpg"
+
 st.markdown("""
     <style>
       .stButton > button { width: 150px; height: 70px; font-size: 16px; }
@@ -24,8 +29,9 @@ st.markdown("""
 # ─── COOKIE SETUP ──────────────────────────────────────────────────────────
 cookies = EncryptedCookieManager(
     prefix="my_app/",
-    password="your-32-byte-long-secret-key-here"
+    password="your-32-byte-long-secret-key-here",
 )
+
 if not cookies.ready():
     st.stop()
 
@@ -218,13 +224,7 @@ for k,v in {
 }.items():
     st.session_state.setdefault(k, v)
 
-# restore cart_data from cookie
-if "cart_state" in cookies:
-    try:
-        st.session_state.cart_data = json.loads(cookies.get("cart_state"))
-    except:
-        pass
-
+# if cart_data doesn’t exist yet, give it the new full shape
 if "cart_data" not in st.session_state:
     st.session_state.cart_data = {
         "basket_id":[gen_basket_id()],
@@ -235,6 +235,20 @@ if "cart_data" not in st.session_state:
         "purchase_type":[], "customer_name":[], "contact":[],
         "email":[], "postal_code":[], "address":[]
     }
+
+# restore cart_data from cookie
+if "cart_state" in cookies:
+    try:
+        st.session_state.cart_data = json.loads(cookies.get("cart_state"))
+    except:
+        pass
+# ─── make sure old carts get the new fields ──────────────────────────────────────
+cart = st.session_state.cart_data
+n = len(cart["basket_id"])
+if "item_brand" not in cart:
+    cart["item_brand"] = [[] for _ in range(n)]
+if "item_model" not in cart:
+    cart["item_model"] = [[] for _ in range(n)]
 
 # ─── OPTIONAL COOKIE DEBUG ─────────────────────────────────────────────────
 with st.sidebar:
@@ -273,8 +287,8 @@ if curr == 0:
     cols = st.columns([1]*len(brands)+[len(brands)], gap="small")
     for col,b in zip(cols[:-1], brands):
         with col:
-            url = { "Honda":"frontend\streamlit_site\images\honda.svg", "Yamaha":"frontend\streamlit_site\images\Yamaha_Logo.jpg" }.get(b)
-            if url: st.image(url, width=250)
+            url = { "Honda":str(IMAGE_DIR / "honda.svg"), "Yamaha":str(IMAGE_DIR / "Yamaha_Logo.jpg") }.get(b)
+            if url and Path(url).exists(): st.image(url, width=250)
             else:   st.write(b)
             st.button(b, on_click=go_to_brand, args=(b,), key=f"brand_{b}")
 
@@ -299,7 +313,7 @@ elif curr == 1:
             st.info(f"No {br} model “{search}.”"); st.stop()
     cfg = BRAND_CONFIG.get(br, BRAND_CONFIG["__default__"])
     size = cfg["model_img_size"]
-    DEFAULT_IMG = "frontend/streamlit_site/images/default_bike.jpg"
+    DEFAULT_IMG = DEFAULT_MODEL_IMG
     cols = st.columns([1]*len(models)+[len(models)], gap="small")
     for col,m in zip(cols[:-1], models):
         with col:
@@ -313,11 +327,11 @@ elif curr == 1:
                 try:
                     img = process_image(raw, size)
                 except UnidentifiedImageError:
-                    pil = PILImage.open(DEFAULT_IMG).convert("RGB")
+                    pil = PILImage.open(str(DEFAULT_IMG)).convert("RGB")
                     img = pil.resize(size, PILImage.BICUBIC)
                 st.image(img, width=size[0])
             else:
-                pil = PILImage.open(DEFAULT_IMG).convert("RGB")
+                pil = PILImage.open(str(DEFAULT_IMG)).convert("RGB")
                 img = pil.resize(size, PILImage.BICUBIC)
                 st.image(img, width=size[0])
             st.button(m, on_click=go_to_model, args=(m,), key=f"mdl_{m}")

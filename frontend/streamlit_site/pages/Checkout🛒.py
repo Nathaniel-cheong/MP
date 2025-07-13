@@ -19,11 +19,17 @@ cookies = EncryptedCookieManager(prefix="my_app/", password="your-32-byte-long-s
 if not cookies.ready():
     st.stop()
 
+# ─── Detect QR-link mode ───────────────────────────────────────────────────
+qp = st.query_params
+is_qr_view = "id" in qp
+
+# ─── CONDITIONAL VISITOR_ID CHECK ────────────────────────────────────────
 visitor_id = cookies.get("visitor_id")
-if visitor_id is None:
+if visitor_id is None and not is_qr_view:
     st.error("No visitor_id found! Please start your session on the Homepage.")
     st.stop()
-st.session_state.setdefault("visitor_id", visitor_id)
+if visitor_id is not None:
+    st.session_state.setdefault("visitor_id", visitor_id)
 
 # ─── LOAD CART FROM COOKIE ─────────────────────────────────────────────────
 cart_json = cookies.get("cart_state")
@@ -48,9 +54,6 @@ def get_part_to_id_map():
         rows = conn.execute(select([mpl.c.part_no, mpl.c.mpl_id])).fetchall()
     return {r[0]: r[1] for r in rows}
 
-# ─── Detect QR-link mode ───────────────────────────────────────────────────
-qp = st.query_params
-is_qr_view = "id" in qp
 
 # ─── Initialize cart_data ─────────────────────────────────────────────────
 if "cart_data" not in st.session_state:
@@ -332,7 +335,7 @@ elif st.session_state.view == "checkout":
             cookies["purchase_history"] = json.dumps(history)
             
             # ─── regenerate QR code and show it ────────────────────────
-            url = f"http://localhost:8501/Checkout🛒?id={bid}"
+            url = f"https://mpams-frontend.streamlit.app/Checkout%F0%9F%9B%92?id={bid}"
             qr_img = qrcode.make(url)
             buf = io.BytesIO(); qr_img.save(buf, format="PNG")
             st.session_state.qr_bytes  = buf.getvalue()
