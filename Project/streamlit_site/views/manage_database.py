@@ -1,6 +1,8 @@
 # Edit pdf
 # Edit mpl list (those without pdf_info, logs, and sections due to cascade delete)
 
+# Adjust size of images and number of section per page based off brand
+
 from imports import *
 import io
 cookies = CookieController()
@@ -60,17 +62,23 @@ if st.session_state.edit_page == False:
     if not pdf_details_df.empty:
         unique_brands = sorted(pdf_details_df["brand"].dropna().unique())
         unique_years = sorted(pdf_details_df["year"].dropna().unique())
+        unique_ccs = sorted(pdf_details_df["cc"].dropna().unique())
+
         with st.container():
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 selected_brand = st.selectbox("Filter by Brand", ["All"] + unique_brands)
             with col2:
                 selected_year = st.selectbox("Filter by Year", ["All"] + [str(year) for year in unique_years])
+            with col3:
+                selected_cc = st.selectbox("Filter by CC", ["All"] + [str(cc) for cc in unique_ccs])
 
         if selected_brand != "All":
             pdf_details_df = pdf_details_df[pdf_details_df["brand"] == selected_brand]
         if selected_year != "All":
             pdf_details_df = pdf_details_df[pdf_details_df["year"] == int(selected_year)]
+        if selected_cc != "All":
+            pdf_details_df = pdf_details_df[pdf_details_df["cc"].astype(str) == selected_cc]
 
         st.divider()
 
