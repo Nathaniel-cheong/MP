@@ -63,26 +63,41 @@ if view_json and st.session_state.get("page_num", 0) == 0:
 def get_engine():
     return engine
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=10, show_spinner=False)
 def get_brands():
     with get_engine().connect() as conn:
-        return [r[0] for r in conn.execute(text("SELECT DISTINCT brand FROM pdf_info")).fetchall()]
+        rows = conn.execute(text("""
+            SELECT DISTINCT pi.brand
+              FROM pdf_info pi
+              JOIN pdf_log   pl ON pi.pdf_id = pl.pdf_id
+             WHERE pl.is_active = 1
+        """)).fetchall()
+    return [r[0] for r in rows]
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=10, show_spinner=False)
 def get_years(brand: str):
     with get_engine().connect() as conn:
-        return [r[0] for r in conn.execute(
-            text("SELECT DISTINCT year FROM pdf_info WHERE brand=:b ORDER BY year DESC"),
-            {"b": brand}
-        ).fetchall()]
+        rows = conn.execute(text("""
+            SELECT DISTINCT pi.year
+              FROM pdf_info pi
+              JOIN pdf_log   pl ON pi.pdf_id = pl.pdf_id
+             WHERE pi.brand    = :b
+               AND pl.is_active = 1
+             ORDER BY pi.year DESC
+        """), {"b": brand}).fetchall()
+    return [r[0] for r in rows]
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=10, show_spinner=False)
 def get_models(brand: str):
     with get_engine().connect() as conn:
-        return [r[0] for r in conn.execute(
-            text("SELECT DISTINCT model FROM pdf_info WHERE brand=:b"),
-            {"b": brand}
-        ).fetchall()]
+        rows = conn.execute(text("""
+            SELECT DISTINCT pi.model
+              FROM pdf_info pi
+              JOIN pdf_log   pl ON pi.pdf_id = pl.pdf_id
+             WHERE pi.brand    = :b
+               AND pl.is_active = 1
+        """), {"b": brand}).fetchall()
+    return [r[0] for r in rows]
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_cc_list(brand: str, model: str):
@@ -111,7 +126,7 @@ if "img_cache" not in st.session_state:
 
 def process_image(img_bytes: bytes, size: tuple[int,int]):
     """
-    Resize the raw JPEG/PNG bytes to `size`, but only once per unique image+size
+    Resize the raw JPEG/PNG bytes to size, but only once per unique image+size
     during this session.  Returns a PIL.Image.
     """
     # derive a key that’s cheap to compare
@@ -126,12 +141,12 @@ def process_image(img_bytes: bytes, size: tuple[int,int]):
 # ─── COOKIE‐SAVE HELPERS (deferred) ────────────────────────────────────────
 def _save_view_cookie():
     cookies["view_state"] = json.dumps({
-        "page_num":        st.session_state.page_num,
-        "current_brand":   st.session_state.current_brand,
-        "current_model":   st.session_state.current_model,
-        "current_cc":      st.session_state.current_cc,
-        "current_section": st.session_state.current_section,
-        "current_ref":     st.session_state.current_ref,
+        "page_num":        st.session_state.get("page_num", 0),
+        "current_brand":   st.session_state.get("current_brand", None),
+        "current_model":   st.session_state.get("current_model", None),
+        "current_cc":      st.session_state.get("current_cc", None),
+        "current_section": st.session_state.get("current_section", None),
+        "current_ref":     st.session_state.get("current_ref", None),
     })
 
 def _save_cart_cookie():
@@ -297,31 +312,44 @@ elif curr == 1:
     st.button("« Back", on_click=go_back, key="back0")
     br = st.session_state.current_brand
     st.subheader(f"{br} Models")
-    colf,_ = st.columns([1,4], gap="small")
+    colf, _ = st.columns([1, 4], gap="small")
     with colf:
         yrs = ["All"] + [str(y) for y in get_years(br)]
         sel = st.selectbox("Filter by year", yrs, key="yr")
-    models = get_models(br) if sel=="All" else [
-        r[0] for r in get_engine().connect()
-                          .execute(text(
-                              "SELECT model FROM pdf_info WHERE brand=:b AND year=:y"
-                          ),{"b":br,"y":int(sel)}).fetchall()
-    ]
+
+    if sel == "All":
+        models = get_models(br)
+    else:
+        with get_engine().connect() as conn:
+            rows = conn.execute(text("""
+                SELECT DISTINCT pi.model
+                  FROM pdf_info pi
+                  JOIN pdf_log   pl ON pi.pdf_id = pl.pdf_id
+                 WHERE pi.brand     = :b
+                   AND pi.year      = :y
+                   AND pl.is_active = 1
+            """), {"b": br, "y": int(sel)}).fetchall()
+        models = [r[0] for r in rows]
+
     if search:
-        models = [m for m in models if m.lower()==search.lower()]
+        models = [m for m in models if m.lower() == search.lower()]
         if not models:
-            st.info(f"No {br} model “{search}.”"); st.stop()
+            st.info(f"No {br} model “{search}.”")
+            st.stop()
+
     cfg = BRAND_CONFIG.get(br, BRAND_CONFIG["__default__"])
     size = cfg["model_img_size"]
     DEFAULT_IMG = DEFAULT_MODEL_IMG
-    cols = st.columns([1]*len(models)+[len(models)], gap="small")
-    for col,m in zip(cols[:-1], models):
+
+    cols = st.columns([1] * len(models) + [len(models)], gap="small")
+    for col, m in zip(cols[:-1], models):
         with col:
             row = get_engine().connect().execute(
                 text("SELECT bike_image FROM pdf_info WHERE brand=:b AND model=:m LIMIT 1"),
-                {"b":br,"m":m}
+                {"b": br, "m": m}
             ).fetchone()
             blob = row[0] if row and row[0] else None
+
             if blob:
                 raw = bytes(blob) if isinstance(blob, memoryview) else blob
                 try:
@@ -334,6 +362,7 @@ elif curr == 1:
                 pil = PILImage.open(str(DEFAULT_IMG)).convert("RGB")
                 img = pil.resize(size, PILImage.BICUBIC)
                 st.image(img, width=size[0])
+
             st.button(m, on_click=go_to_model, args=(m,), key=f"mdl_{m}")
 
 # Page 2: CC
