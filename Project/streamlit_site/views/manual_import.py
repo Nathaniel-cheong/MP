@@ -55,7 +55,6 @@ if is_new_file:
         "mpl_reimport_temp_df": None,
         "pdf_section_reimport_temp_df": None,
         "preview_loaded": None
-
     }
 
 file_state = st.session_state["file_states"][filename]
@@ -99,6 +98,11 @@ st.info("Please review all form fields. All values were auto-filled from the fil
 form_model = st.text_input("Model:", value=file_state["model"])
 form_batch_id = st.text_input("Batch ID:", value=file_state["batch_id"])
 form_year = st.text_input("Year:", value=file_state["year"])
+cc_options = ["<200", "200-400", ">400"]
+form_cc = st.selectbox("Brand:", cc_options, key="cc")
+
+if form_cc is "<200":
+    st.info("Ensure that you have selected the correct CC of the bike.")
 
 form_filled = all([
     str(form_model).strip(),
@@ -106,7 +110,7 @@ form_filled = all([
     str(form_year).strip()
 ])
 
-form_image = st.file_uploader("Upload the bike image", type=["jpg", "jpeg", "png"])
+form_image = st.file_uploader("Upload the bike image (Optional)", type=["jpg", "jpeg", "png"])
 image_bytes = form_image.read() if form_image else None
 
 form_accepted = False
@@ -145,6 +149,7 @@ if file_state["preview_clicked"] and form_filled:
         file_state["year"],
         file_state["model"],
         file_state["batch_id"],
+        form_cc,
         image_bytes
     ]
 
@@ -415,8 +420,8 @@ if file_state["preview_clicked"] and form_filled:
     if st.button("Upload Data to Database", disabled=not checked_tables) or file_state.get("replace_pending"):
         # Define required fields per table
         required_fields = {
-            "pdf_info": ["pdf_id", "year", "brand", "model", "batch_id"],
-            "pdf_section_df": ["section_id", "section_no", "section_name", "cc", "pdf_id"],
+            "pdf_info": ["pdf_id", "year", "brand", "model", "batch_id", "cc"],
+            "pdf_section_df": ["section_id", "section_no", "section_name", "pdf_id"],
             "mpl_df": ["part_no", "description", "ref_no", "section_id", "pdf_id"],
             "pdf_log": ["pdf_id", "account_id", "timestamp", "is_active", "is_current"]
         }
@@ -448,13 +453,13 @@ if file_state["preview_clicked"] and form_filled:
                 "brand": str,
                 "model": str,
                 "batch_id": str,
+                "cc": str,
             })
 
             file_state["pdf_section_df"] = file_state["pdf_section_df"].astype({
                 "section_id": str,
                 "section_no": str,
                 "section_name": str,
-                "cc": str,
                 "pdf_id": str
             })
 
@@ -510,7 +515,6 @@ if file_state["preview_clicked"] and form_filled:
                 st.success("✅ Upload completed successfully.")
 
                 # ✅ Clean up after successful upload
-                # ✅ Clean up all related session state after successful upload
                 st.session_state["file_states"].pop(filename, None)
                 st.session_state["uploaded_filename"] = ""
                 st.session_state.pop("brand_select", None)

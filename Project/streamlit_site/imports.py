@@ -68,7 +68,7 @@ def extract_year(pdf_name, brand):
     return None
 
 class PDFProcessor:
-    def __init__(self, pdf_bytes, pdf_id, brand, year, model, batch_id, image=None):        
+    def __init__(self, pdf_bytes, pdf_id, brand, year, model, batch_id, cc, image=None):        
         self.pdf_stream = BytesIO(pdf_bytes)
         self.pdf_id = pdf_id
         self.brand = brand
@@ -76,6 +76,7 @@ class PDFProcessor:
         self.model = model
         self.batch_id = batch_id
         self.image = image
+        self.cc = cc
 
         self.pdf_section_df = None
 
@@ -86,7 +87,8 @@ class PDFProcessor:
             "year": self.year,
             "model": self.model,
             "batch_id": self.batch_id,
-            "bike_image": self.image
+            "bike_image": self.image,
+            "cc": self.cc
         }])
     
     #def bike_image_display(self):
@@ -340,11 +342,8 @@ class YamahaProcessor(PDFProcessor):
             how="inner"  # use "left" if you want to keep all rows from section_df
         )
 
-        # Add 'cc' column as empty string
-        merged_df["cc"] = ""
-
         # Optional: Reorder columns
-        final_columns = ['section_id', 'section_no', 'section_name', 'cc', 'section_image', 'pdf_id']
+        final_columns = ['section_id', 'section_no', 'section_name', 'section_image', 'pdf_id']
         merged_df = merged_df[final_columns]
 
         return merged_df
@@ -776,11 +775,8 @@ class HondaProcessor(PDFProcessor):
             how="inner"  # use "left" if you want to keep all rows from section_df
         )
 
-        # Add 'cc' column as empty string
-        merged_df["cc"] = ""
-
         # Optional: Reorder columns
-        final_columns = ['section_id', 'section_no', 'section_name', 'cc', 'section_image', 'pdf_id']
+        final_columns = ['section_id', 'section_no', 'section_name', 'section_image', 'pdf_id']
         merged_df = merged_df[final_columns]
 
         return merged_df
