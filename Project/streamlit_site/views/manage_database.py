@@ -29,17 +29,35 @@ if None in (mpl_table, pdf_info_table, pdf_log_table, pdf_section_table):
     st.error("❌ Could not find one or more required tables.")
     st.stop()
 
-if st.session_state.edit_page == False:
+# --- Cached loader functions ---
+@st.cache_data(ttl=300)
+def load_pdf_details():
     pdf_details_table = join(pdf_log_table, pdf_info_table, pdf_log_table.c.pdf_id == pdf_info_table.c.pdf_id)
     query = select(pdf_log_table, pdf_info_table).select_from(pdf_details_table).where(pdf_log_table.c.is_current == 1)
-
     with engine.connect() as conn:
         result = conn.execute(query)
         rows = result.fetchall()
+    return pd.DataFrame(rows, columns=result.keys())
 
-    if rows:
-        pdf_details_df = pd.DataFrame(rows, columns=result.keys())
+@st.cache_data(ttl=300)
+def load_pdf_info_table():
+    with engine.connect() as conn:
+        return pd.read_sql_table("pdf_info", con=conn)
 
+@st.cache_data(ttl=300)
+def load_mpl_table():
+    with engine.connect() as conn:
+        return pd.read_sql_table("master_parts_list", con=conn)
+
+@st.cache_data(ttl=300)
+def load_pdf_section_table():
+    with engine.connect() as conn:
+        return pd.read_sql_table("pdf_section", con=conn)
+
+if st.session_state.edit_page == False:
+    pdf_details_df = load_pdf_details()
+
+    if not pdf_details_df.empty:
         unique_brands = sorted(pdf_details_df["brand"].dropna().unique())
         unique_years = sorted(pdf_details_df["year"].dropna().unique())
         with st.container():
@@ -49,11 +67,11 @@ if st.session_state.edit_page == False:
             with col2:
                 selected_year = st.selectbox("Filter by Year", ["All"] + [str(year) for year in unique_years])
 
-        # Apply filters
         if selected_brand != "All":
             pdf_details_df = pdf_details_df[pdf_details_df["brand"] == selected_brand]
         if selected_year != "All":
             pdf_details_df = pdf_details_df[pdf_details_df["year"] == int(selected_year)]
+
         st.divider()
 
         for index, row in pdf_details_df.iterrows():
@@ -85,7 +103,9 @@ if st.session_state.edit_page == False:
                         <b>Batch ID:</b> {row['batch_id']}<br>
                         <b>Year:</b> {row['year']}<br>
                         <b>Brand:</b> {row['brand']}<br>
+                        <b>CC:</b> {row['cc']}<br>
                         <u><b>UPLOAD DETAILS:</b></u><br>
+                        <b>Staff:</b> {row['account_id']}<br>
                         <b>Date:</b> {date_str}<br>
                         <b>Time:</b> {time_str}<br>
                         Status: {status_str}
@@ -107,6 +127,7 @@ if st.session_state.edit_page == False:
                                 pdf_log_table.c.pdf_id == row['pdf_id']
                             ).values(is_active=new_status)
                             conn.execute(stmt)
+                        st.cache_data.clear()
                         st.success(f"Status for PDF ID {row['pdf_id']} updated.")
                         st.rerun()
 
@@ -126,6 +147,7 @@ if st.session_state.edit_page == False:
                             with engine.begin() as conn:
                                 stmt = delete(pdf_log_table).where(pdf_log_table.c.pdf_id == row['pdf_id'])
                                 conn.execute(stmt)
+                            st.cache_data.clear()
                             st.success(f"Deleted PDF ID {row['pdf_id']}")
                             st.session_state[confirm_key] = False
                             st.rerun()
@@ -194,7 +216,7 @@ if st.session_state.edit_page:
             st.subheader("Edit: master_parts_list")
             st.warning("Please do not touch the **mpl_id** column when editing")
             mpl_df = pd.read_sql_table("master_parts_list", con=conn)
-            edit_mpl_df = mpl_df[mpl_df["pdf_id"] == pdf_id]
+            edit_mpl_df = mpl_df[mpl_df["pdf_id"] == pdf_id].sort_values("mpl_id")
 
             if edit_mpl_df.empty:
                 st.warning("No entries found for this PDF ID.")
@@ -206,7 +228,7 @@ if st.session_state.edit_page:
                 st.session_state.setdefault("mpl_edit_mode", False)
                 st.session_state.setdefault("mpl_reimport_temp_df", None)
 
-                st.dataframe(st.session_state["mpl_df"], use_container_width=True)
+                st.dataframe(st.session_state["mpl_df"], use_container_width=True, hide_index=True)
 
                 # --- Download Excel ---
                 buffer = io.BytesIO()
@@ -320,28 +342,25 @@ if st.session_state.edit_page:
         # Edit PDF Section page
         elif st.session_state.edit_page_pdf_section:
             st.subheader("Edit: pdf_section")
-            df = pd.read_sql_table("pdf_section", con=conn)
-            df = df[df["pdf_id"] == pdf_id]
 
-            # CC Filter
-            unique_ccs = sorted(df["cc"].dropna().unique())
-            selected_cc = st.selectbox("Filter by CC", ["All"] + [str(cc) for cc in unique_ccs])
+            # Only load filtered data for this pdf_id
+            df = pd.read_sql_query(
+                text("SELECT * FROM pdf_section WHERE pdf_id = :pdf_id"),
+                con=conn,
+                params={"pdf_id": pdf_id}
+            )
 
-            if selected_cc != "All":
-                df = df[df["cc"].astype(str) == selected_cc]
-
-            # Initialize pagination
+            # Pagination setup
             sections_per_page = 10
             total_sections = len(df)
             total_pages = (total_sections - 1) // sections_per_page + 1
-
             st.session_state.setdefault("section_page", 0)
             current_page = st.session_state["section_page"]
 
             if df.empty:
                 st.warning("No PDF sections found for this PDF ID.")
             else:
-                # Slice dataframe for current page
+                # Get page slice
                 start_idx = current_page * sections_per_page
                 end_idx = start_idx + sections_per_page
                 current_df = df.iloc[start_idx:end_idx]
@@ -350,22 +369,30 @@ if st.session_state.edit_page:
                     with st.container():
                         img_col, info_col, btn_col = st.columns([1.5, 3, 1])
                         with img_col:
-                            if row["section_image"]:
+                            img_data = row["section_image"]
+                            if img_data:
                                 try:
-                                    st.image(row["section_image"], width=200)
-                                except Exception:
+                                    if isinstance(img_data, (bytes, bytearray, memoryview)):
+                                        image = Image.open(io.BytesIO(img_data))
+                                        st.image(image, width=200)
+                                    else:
+                                        st.image(img_data, width=200)
+                                except Exception as e:
                                     st.write("⚠️ Image could not be displayed.")
+                                    st.caption(str(e))
                             else:
                                 st.write("🚫 No image available")
+
                         with info_col:
                             st.markdown(f"""
-                            **Section ID:** `{row['section_id']}`   
-                            **Name:** {row['section_name']}\n
-                            **Section No:** {row['section_no']}\n 
-                            **CC:** {row['cc']}
+                            **Section ID:** `{row['section_id']}`  
+                            **Name:** {row['section_name']}  
+                            **Section No:** {row['section_no']}  
                             """)
+
                         with btn_col:
                             st.button("Edit Section Details", key=f"edit_section_{row['section_id']}")
+
                     st.divider()
 
                 # Pagination controls
@@ -375,10 +402,8 @@ if st.session_state.edit_page:
                         if st.button("⬅️ Previous", key="prev_page"):
                             st.session_state["section_page"] -= 1
                             st.rerun()
-
                 with col2:
                     st.markdown(f"<center>Page {current_page + 1} of {total_pages}</center>", unsafe_allow_html=True)
-
                 with col3:
                     if end_idx < total_sections:
                         if st.button("Next ➡️", key="next_page"):
