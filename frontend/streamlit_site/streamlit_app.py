@@ -56,15 +56,12 @@ def load_session_state():
             with open(APP_STATE_PATH, "rb") as f:
                 state = pickle.load(f)
             for k in PERSIST_KEYS:
-                # if missing in file, default page_num to 0
                 if k not in state and k == "page_num":
                     st.session_state[k] = 0
                 else:
                     v = state.get(k)
-                    # convert bytes back to memoryview if needed?
                     st.session_state[k] = v
         except Exception:
-            # on error, at least ensure page_num starts at 0
             st.session_state["page_num"] = 0
 
 def save_session_state():
@@ -72,7 +69,6 @@ def save_session_state():
     state_dict = {}
     for k in PERSIST_KEYS:
         v = st.session_state.get(k)
-        # convert memoryview to bytes for pickling
         if isinstance(v, memoryview):
             v = bytes(v)
         state_dict[k] = v
@@ -112,8 +108,6 @@ def gen_basket_id() -> str:
 
         if not found:
             return candidate
-        # otherwise loop and try again
-
 
 # ─── INITIAL LOAD ON IMPORT ──────────────────────────────────────────────
 
@@ -126,7 +120,7 @@ if "cart_data" not in st.session_state:
         # Generate a fresh 8-char alphanumeric ID
         new_id = gen_basket_id()
         st.session_state.cart_data = {
-            "basket_id":     [new_id],  
+            "basket_id":     [new_id],
             "part_no":       [[]],
             "quantity":      [[]],
             "purchase_type": [],
@@ -136,8 +130,7 @@ if "cart_data" not in st.session_state:
             "postal_code":   [],
             "address":       []
         }
-        save_cart_to_disk()
+        # auto-save removed here
 
 # 2. Load preserved page/navigation state (always overwrites)
 load_session_state()
-

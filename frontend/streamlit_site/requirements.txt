@@ -1,6 +1,6 @@
 pdfplumber==0.10.3
 IPython==8.24.0
-streamlit-cookies-controller==0.0.4
+streamlit-cookies-manager==0.2.0
 psycopg2-binary==2.9.10
 sqlalchemy==1.3.24
 PyMuPDF==1.25.5
