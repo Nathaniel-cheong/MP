@@ -133,7 +133,6 @@ if st.session_state.edit_page == False:
                         if st.button("❌ Cancel", key=cancel_button_key):
                             st.session_state[confirm_key] = False
                             st.rerun()
-
                 st.divider()
     else:
         st.info("Unable to join tables. Please check your table.")
@@ -153,6 +152,7 @@ if st.session_state.edit_page:
         if st.button("🔙 Back to Table Selection"):
             for key in ["edit_page_mpl_list", "edit_page_pdf_info", "edit_page_pdf_section"]:
                 st.session_state[key] = False
+            st.session_state["section_page"] = 0
             st.rerun()
 
     elif st.button("🔙 Back to All PDFs"):
@@ -182,12 +182,14 @@ if st.session_state.edit_page:
             st.rerun()
 
     with engine.connect() as conn:
+        # Edit PDF Info page
         if st.session_state.edit_page_pdf_info:
             st.subheader("Edit: pdf_info")
             df = pd.read_sql_table("pdf_info", con=conn)
             df = df[df["pdf_id"] == pdf_id]
             st.dataframe(df, use_container_width=True)
         
+        # Edit MPL page
         elif st.session_state.edit_page_mpl_list:
             st.subheader("Edit: master_parts_list")
             st.warning("Please do not touch the **mpl_id** column when editing")
@@ -277,10 +279,12 @@ if st.session_state.edit_page:
                             st.session_state["mpl_df"] = edited_df
                             st.session_state["mpl_edit_mode"] = False
                             st.success("✅ Changes saved locally. Press 'Save Changes' to apply to database.")
+                            time.sleep(2)
                             st.rerun()
                         elif cancel_btn:
                             st.session_state["mpl_edit_mode"] = False
                             st.info("❌ Edit cancelled.")
+                            time.sleep(2)
                             st.rerun()
 
                 st.divider()
@@ -313,8 +317,70 @@ if st.session_state.edit_page:
                     except Exception as e:
                         st.error(f"❌ Failed to save to database: {e}")
 
+        # Edit PDF Section page
         elif st.session_state.edit_page_pdf_section:
             st.subheader("Edit: pdf_section")
             df = pd.read_sql_table("pdf_section", con=conn)
             df = df[df["pdf_id"] == pdf_id]
-            st.dataframe(df, use_container_width=True)
+
+            # CC Filter
+            unique_ccs = sorted(df["cc"].dropna().unique())
+            selected_cc = st.selectbox("Filter by CC", ["All"] + [str(cc) for cc in unique_ccs])
+
+            if selected_cc != "All":
+                df = df[df["cc"].astype(str) == selected_cc]
+
+            # Initialize pagination
+            sections_per_page = 10
+            total_sections = len(df)
+            total_pages = (total_sections - 1) // sections_per_page + 1
+
+            st.session_state.setdefault("section_page", 0)
+            current_page = st.session_state["section_page"]
+
+            if df.empty:
+                st.warning("No PDF sections found for this PDF ID.")
+            else:
+                # Slice dataframe for current page
+                start_idx = current_page * sections_per_page
+                end_idx = start_idx + sections_per_page
+                current_df = df.iloc[start_idx:end_idx]
+
+                for idx, row in current_df.iterrows():
+                    with st.container():
+                        img_col, info_col, btn_col = st.columns([1.5, 3, 1])
+                        with img_col:
+                            if row["section_image"]:
+                                try:
+                                    st.image(row["section_image"], width=200)
+                                except Exception:
+                                    st.write("⚠️ Image could not be displayed.")
+                            else:
+                                st.write("🚫 No image available")
+                        with info_col:
+                            st.markdown(f"""
+                            **Section ID:** `{row['section_id']}`   
+                            **Name:** {row['section_name']}\n
+                            **Section No:** {row['section_no']}\n 
+                            **CC:** {row['cc']}
+                            """)
+                        with btn_col:
+                            st.button("Edit Section Details", key=f"edit_section_{row['section_id']}")
+                    st.divider()
+
+                # Pagination controls
+                col1, col2, col3 = st.columns([1, 2, 1])
+                with col1:
+                    if current_page > 0:
+                        if st.button("⬅️ Previous", key="prev_page"):
+                            st.session_state["section_page"] -= 1
+                            st.rerun()
+
+                with col2:
+                    st.markdown(f"<center>Page {current_page + 1} of {total_pages}</center>", unsafe_allow_html=True)
+
+                with col3:
+                    if end_idx < total_sections:
+                        if st.button("Next ➡️", key="next_page"):
+                            st.session_state["section_page"] += 1
+                            st.rerun()
