@@ -75,8 +75,8 @@ else:
         })
     with st.sidebar:
         if st.button("🔓 Log Out"):
-            cookies.delete("user_type")
-            cookies.delete("user_name")
+            #cookies.delete("user_type")
+            #cookies.delete("user_name")
             st.session_state.clear()
             st.success("Logged out.")
             st.rerun()
