@@ -54,6 +54,7 @@ if is_new_file:
         "pdf_log": None,
         "mpl_reimport_temp_df": None,
         "pdf_section_reimport_temp_df": None,
+        "preview_loaded": None
 
     }
 
@@ -84,6 +85,7 @@ if st.session_state.brand_select != file_state["previous_brand"]:
     file_state["model"] = extract_model(filename)
     file_state["previous_brand"] = st.session_state.brand_select
     file_state["preview_clicked"] = False
+    file_state["preview_loaded"] = None
     
     file_state['mpl_df'] = None
     file_state['pdf_section_df'] = None
@@ -122,11 +124,15 @@ if form_accepted:
 preview_enabled = form_accepted and checked_form
 
 if st.button("Preview Data", disabled=not preview_enabled):
+    if file_state["preview_loaded"]:
+        file_state['pdf_info'] = None
+
     # Copy form to session state
     file_state["model"] = form_model
     file_state["batch_id"] = form_batch_id
     file_state["year"] = form_year
     file_state["preview_clicked"] = True
+    file_state["preview_loaded"] = True
 
 # --- MAIN PROCESSING ---
 if file_state["preview_clicked"] and form_filled:
@@ -147,8 +153,9 @@ if file_state["preview_clicked"] and form_filled:
 
     elif file_state["brand"] == "Honda":
         processor = HondaProcessor(*parameters)
-
-    file_state["pdf_info"] = processor.get_pdf_info()
+    
+    if file_state["pdf_info"] is None:
+        file_state["pdf_info"] = processor.get_pdf_info()
 
     if file_state["mpl_df"] is None or file_state["pdf_section_df"] is None:
         with st.status("Extracting Parts Data") as status:
