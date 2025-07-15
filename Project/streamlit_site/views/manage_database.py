@@ -5,14 +5,6 @@
 
 from imports import *
 import io
-cookies = CookieController()
-
-# Rehydrate session state from cookies
-if "user_type" not in st.session_state:
-    st.session_state.user_type = cookies.get("user_type")
-if "user_name" not in st.session_state:
-    st.session_state.user_name = cookies.get("user_name")
-
 st.title("Manage PDFs")
 
 for key in ["edit_page", "edit_page_mpl_list", "edit_page_pdf_info", "edit_page_pdf_section"]:
