@@ -239,6 +239,7 @@ if file_state["preview_clicked"] and form_filled:
                         file_state["mpl_excel_uploaded"] = True
                         file_state["mpl_show_excel_reimport"] = False
                         st.success("✅ Excel file imported and table updated.")
+                        time.sleep(2)
                         st.rerun()
                     else:
                         st.warning("⚠️ Please upload a valid Excel file before confirming.")
@@ -247,6 +248,7 @@ if file_state["preview_clicked"] and form_filled:
                     file_state["mpl_reimport_temp_df"] = None
                     file_state["mpl_show_excel_reimport"] = False
                     st.info("❌ Reimport cancelled.")
+                    time.sleep(2)
                     st.rerun()
 
         # --- Edit Mode Toggle ---
@@ -268,11 +270,13 @@ if file_state["preview_clicked"] and form_filled:
                     file_state["mpl_df"] = edited_mpl_df
                     file_state["mpl_edit_mode"] = False
                     st.success("✅ Master Parts List data updated.")
+                    time.sleep(2)
                     st.rerun()
 
                 elif cancel_edit:
                     file_state["mpl_edit_mode"] = False
                     st.info("❌ Edit cancelled.")
+                    time.sleep(2)
                     st.rerun()
 
     # PDF SECTION preview + edits UI
@@ -345,6 +349,7 @@ if file_state["preview_clicked"] and form_filled:
                         file_state["pdf_section_excel_uploaded"] = True
                         file_state["pdf_section_show_excel_reimport"] = False
                         st.success("✅ Excel file imported and table updated.")
+                        time.sleep(2)
                         st.rerun()
                     else:
                         st.warning("⚠️ Please upload a valid Excel file before confirming.")
@@ -353,6 +358,7 @@ if file_state["preview_clicked"] and form_filled:
                     file_state["pdf_section_reimport_temp_df"] = None
                     file_state["pdf_section_show_excel_reimport"] = False
                     st.info("❌ Reimport cancelled.")
+                    time.sleep(2)
                     st.rerun()
 
 
@@ -375,11 +381,13 @@ if file_state["preview_clicked"] and form_filled:
                     file_state["pdf_section_df"] = edited_pdf_section_df
                     file_state["pdf_section_edit_mode"] = False
                     st.success("✅ PDF Section data updated.")
+                    time.sleep(2)
                     st.rerun()
 
                 elif cancel_edit:
                     file_state["pdf_section_edit_mode"] = False
                     st.info("❌ Edit cancelled.")
+                    time.sleep(2)
                     st.rerun()
 
         # Image Preview UI
@@ -479,52 +487,38 @@ if file_state["preview_clicked"] and form_filled:
             ).fetchone()
 
         # --- If exists and not confirmed yet → prompt ---
-        if existing and not file_state.get("replace_confirmed"):
-            file_state["replace_pending"] = True
-            st.warning(f"⚠️ PDF ID '{pdf_id}' already exists in the database.")
-
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                if st.button("⚠️ Confirm Replace Existing Entry"):
-                    file_state["replace_confirmed"] = True
-                    file_state["replace_pending"] = False
-                    st.rerun()
-            with col2:
-                if st.button("❌ Cancel Upload"):
-                    file_state["replace_pending"] = False
-                    st.info("Upload cancelled.")
-                    st.stop()
-            st.stop()
-
-        # --- If confirmed → delete old entries ---
-        if existing and file_state.get("replace_confirmed"):
-            try:
-                with engine.begin() as conn:
-                    for table in ["master_parts_list", "pdf_section", "pdf_log", "pdf_info"]:
-                        conn.execute(text(f"DELETE FROM {table} WHERE pdf_id = :pdf_id"), {"pdf_id": pdf_id})
-                st.info(f"🗑️ Deleted existing records for PDF ID '{pdf_id}'.")
-            except Exception as e:
-                st.error(f"❌ Failed to delete existing data: {e}")
-                st.stop()
-
-        # --- Attempt Insert ---
         try:
             Session = sessionmaker(bind=engine)
             session = Session()
 
-            with session.begin():
-                file_state["pdf_info"].to_sql("pdf_info", session.connection(), if_exists="append", index=False)
-                file_state["pdf_section_df"].to_sql("pdf_section", session.connection(), if_exists="append", index=False)
-                file_state["mpl_df"].to_sql("master_parts_list", session.connection(), if_exists="append", index=False)
-                file_state["pdf_log"].to_sql("pdf_log", session.connection(), if_exists="append", index=False)
+            with st.status("📤 Uploading data to database...", expanded=True) as status:
+                with session.begin():
+                    # Delete old records
+                    for table in ["master_parts_list", "pdf_section", "pdf_log", "pdf_info"]:
+                        session.execute(text(f"DELETE FROM {table} WHERE pdf_id = :pdf_id"), {"pdf_id": pdf_id})
 
-            st.success("✅ Upload completed successfully.")
+                    # Insert new records
+                    file_state["pdf_info"].to_sql("pdf_info", session.connection(), if_exists="append", index=False)
+                    file_state["pdf_section_df"].to_sql("pdf_section", session.connection(), if_exists="append", index=False)
+                    file_state["mpl_df"].to_sql("master_parts_list", session.connection(), if_exists="append", index=False)
+                    file_state["pdf_log"].to_sql("pdf_log", session.connection(), if_exists="append", index=False)
 
-            # Clean up flags
-            file_state["replace_confirmed"] = False
-            file_state["replace_pending"] = False
+                file_state["replace_confirmed"] = False
+                file_state["replace_pending"] = False
 
+                status.update(label="✅ Upload completed successfully.", state="complete")
+                st.success("✅ Upload completed successfully.")
+
+                # ✅ Clean up after successful upload
+                # ✅ Clean up all related session state after successful upload
+                st.session_state["file_states"].pop(filename, None)
+                st.session_state["uploaded_filename"] = ""
+                st.session_state.pop("brand_select", None)
+                st.session_state.pop("show_image_previews", None)
+                st.session_state.pop("confirm_tables", None)
+                
         except Exception as e:
+            status.update(label="❌ Upload failed.", state="error")
             st.error(f"❌ Upload failed: {e}")
             st.warning("⚠️ No changes were made to the database.")
             st.stop()

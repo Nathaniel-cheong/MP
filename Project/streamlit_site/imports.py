@@ -13,6 +13,7 @@ from PIL import Image as PILImage
 from io import BytesIO
 from collections import defaultdict
 from datetime import datetime
+import time
 
 import streamlit as st
 from streamlit_cookies_controller import CookieController
