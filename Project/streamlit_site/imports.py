@@ -16,7 +16,16 @@ from datetime import datetime
 import time
 
 import streamlit as st
-from streamlit_cookies_controller import CookieController
+from streamlit_cookies_manager import EncryptedCookieManager
+
+# Set up cookie manager
+cookies = EncryptedCookieManager(
+    prefix="myapp_",
+    password="supersecret"
+)
+
+if not cookies.ready():
+    st.stop()
 
 # --- DATABASE SETUP ---
 from sqlalchemy import (create_engine, select, update, delete, distinct, text, join, \

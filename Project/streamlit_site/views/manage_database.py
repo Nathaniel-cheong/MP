@@ -690,7 +690,7 @@ if st.session_state.edit_page:
                             if st.button("View Details", key=f"view_section_{row['section_id']}"):
                                 st.session_state["selected_section_id"] = row["section_id"]
                                 st.rerun()
-
+ 
                     st.divider()
 
                 # Pagination controls
