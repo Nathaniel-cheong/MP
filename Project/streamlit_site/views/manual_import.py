@@ -236,7 +236,7 @@ if file_state["preview_clicked"] and form_filled:
                         file_state["mpl_excel_uploaded"] = True
                         file_state["mpl_show_excel_reimport"] = False
                         st.success("✅ Excel file imported and table updated.")
-                        time.sleep(2)
+                        time.sleep(1)
                         st.rerun()
                     else:
                         st.warning("⚠️ Please upload a valid Excel file before confirming.")
@@ -245,7 +245,7 @@ if file_state["preview_clicked"] and form_filled:
                     file_state["mpl_reimport_temp_df"] = None
                     file_state["mpl_show_excel_reimport"] = False
                     st.info("❌ Reimport cancelled.")
-                    time.sleep(2)
+                    time.sleep(1)
                     st.rerun()
 
         # --- Edit Mode Toggle ---
@@ -267,13 +267,13 @@ if file_state["preview_clicked"] and form_filled:
                     file_state["mpl_df"] = edited_mpl_df
                     file_state["mpl_edit_mode"] = False
                     st.success("✅ Master Parts List data updated.")
-                    time.sleep(2)
+                    time.sleep(1)
                     st.rerun()
 
                 elif cancel_edit:
                     file_state["mpl_edit_mode"] = False
                     st.info("❌ Edit cancelled.")
-                    time.sleep(2)
+                    time.sleep(1)
                     st.rerun()
 
     # PDF SECTION preview + edits UI
@@ -346,7 +346,7 @@ if file_state["preview_clicked"] and form_filled:
                         file_state["pdf_section_excel_uploaded"] = True
                         file_state["pdf_section_show_excel_reimport"] = False
                         st.success("✅ Excel file imported and table updated.")
-                        time.sleep(2)
+                        time.sleep(1)
                         st.rerun()
                     else:
                         st.warning("⚠️ Please upload a valid Excel file before confirming.")
@@ -355,9 +355,8 @@ if file_state["preview_clicked"] and form_filled:
                     file_state["pdf_section_reimport_temp_df"] = None
                     file_state["pdf_section_show_excel_reimport"] = False
                     st.info("❌ Reimport cancelled.")
-                    time.sleep(2)
+                    time.sleep(1)
                     st.rerun()
-
 
         # Button to toggle Edit Table UI
         if st.button("✏️ Edit Table", key="pdf_section_edit_button"):
@@ -378,13 +377,13 @@ if file_state["preview_clicked"] and form_filled:
                     file_state["pdf_section_df"] = edited_pdf_section_df
                     file_state["pdf_section_edit_mode"] = False
                     st.success("✅ PDF Section data updated.")
-                    time.sleep(2)
+                    time.sleep(1)
                     st.rerun()
 
                 elif cancel_edit:
                     file_state["pdf_section_edit_mode"] = False
                     st.info("❌ Edit cancelled.")
-                    time.sleep(2)
+                    time.sleep(1)
                     st.rerun()
 
         # Image Preview UI
@@ -417,7 +416,7 @@ if file_state["preview_clicked"] and form_filled:
             "mpl_df": ["part_no", "description", "ref_no", "section_id", "pdf_id"],
             "pdf_log": ["pdf_id", "account_id", "timestamp", "is_active", "is_current"]
         }
-
+        
         # --- Check for missing/blank required fields ---
         for df_key, required_cols in required_fields.items():
             df = file_state.get(df_key)
