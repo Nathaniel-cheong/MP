@@ -93,7 +93,7 @@ form_year = st.text_input("Year:", value=file_state["year"])
 cc_options = ["<200", "200-400", ">400"]
 form_cc = st.selectbox("Brand:", cc_options, key="cc")
 
-if form_cc is "<200":
+if form_cc == "<200":
     st.info("Ensure that you have selected the correct CC of the bike.")
 
 form_filled = all([
