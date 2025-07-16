@@ -1,6 +1,3 @@
-# Edit pdf
-# Edit mpl list (those without pdf_info, logs, and sections due to cascade delete)
-
 # Adjust size of images and number of section per page based off brand
 
 from imports import *
@@ -181,7 +178,9 @@ if st.session_state.edit_page:
         # Clear all editing page flags
         for key in [
             "edit_page", "edit_page_mpl_list", "edit_page_pdf_info", "edit_page_pdf_section",
-            "mpl_df", "mpl_pdf_id", "mpl_edit_mode", "mpl_show_excel_reimport", "mpl_reimport_temp_df"
+            "mpl_df", "mpl_pdf_id", "mpl_edit_mode", "mpl_show_excel_reimport", "mpl_reimport_temp_df",
+            "pdf_info_pdf_id", "pdf_info_df", "pdf_info_edit_mode", "pdf_info_edit_image",
+            "section_page", "selected_section_id"
         ]:
             st.session_state.pop(key, None)
         st.session_state.pop("selected_pdf_id", None)
@@ -206,11 +205,185 @@ if st.session_state.edit_page:
     with engine.connect() as conn:
         # Edit PDF Info page
         if st.session_state.edit_page_pdf_info:
+            st.divider()
             st.subheader("Edit: pdf_info")
-            df = pd.read_sql_table("pdf_info", con=conn)
-            df = df[df["pdf_id"] == pdf_id]
-            st.dataframe(df, use_container_width=True)
-        
+
+            pdf_info_df = pd.read_sql_table("pdf_info", con=conn)
+            edit_pdf_info_df = pdf_info_df[pdf_info_df["pdf_id"] == pdf_id]
+
+            if edit_pdf_info_df.empty:
+                st.warning("No data found for PDF ID.")
+                st.stop()
+
+            # --- Initialize session state ---
+            st.session_state.setdefault("pdf_info_pdf_id", pdf_id)
+            st.session_state.setdefault("pdf_info_df", edit_pdf_info_df.copy())
+            st.session_state.setdefault("pdf_info_edit_mode", False)
+            st.session_state.setdefault("pdf_info_edit_image", False)
+
+            st.dataframe(st.session_state["pdf_info_df"], use_container_width=True)
+
+            if st.button("❌ Remove Image", key="remove_image_button"):
+                st.session_state["pdf_info_df"].iloc[0, st.session_state["pdf_info_df"].columns.get_loc("bike_image")] = None
+                st.success("🗑️ Image removed from draft.")
+                st.rerun()
+
+            # --- Upload Preview Button (future logic can go inside if needed) ---
+            if st.button("📤 Upload Image", key="upload_image_button"):
+                st.session_state["pdf_info_edit_image"] = True
+            
+            # --- Upload Image ---
+            if st.session_state["pdf_info_edit_image"]:
+                with st.form("upload_image_form"):
+                    st.subheader("Upload Image")
+
+                    uploaded_image = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+                    preview_image = st.form_submit_button("🖼️ Preview Image")
+
+                    if preview_image:
+                        if uploaded_image:
+                            try:
+                                image_data = uploaded_image.getvalue()
+                                st.image(image_data, width=200)
+                            except Exception as e:
+                                st.error("❌ Unable to read image.")
+                                st.caption(str(e))
+                        else:
+                            st.warning("⚠️ No image uploaded.")
+
+                    st.divider()
+                    confirm_upload = st.form_submit_button("✅ Confirm Upload")
+                    cancel_upload = st.form_submit_button("❌ Cancel")
+
+                    if confirm_upload:
+                        if uploaded_image:
+                            try:
+                                image_data = uploaded_image.getvalue()
+                                st.session_state["pdf_info_df"].iloc[0, st.session_state["pdf_info_df"].columns.get_loc("bike_image")] = image_data
+                                st.success("✅ Image saved to draft.")
+                                time.sleep(1)
+                                st.session_state["pdf_info_edit_image"] = False
+                                st.rerun()
+                            except Exception as e:
+                                st.error("❌ Error saving image to draft.")
+                                st.caption(str(e))
+                        else:
+                            st.warning("⚠️ No image uploaded.")
+
+                    if cancel_upload:
+                        st.info("❌ Image upload cancelled.")
+                        st.session_state["pdf_info_edit_image"] = False
+                        st.rerun()
+
+            # --- Enable Edit Mode ---
+            if st.button("✏️ Edit Table", key="pdf_info_edit_button"):
+                st.session_state["pdf_info_edit_mode"] = True
+
+            # --- Edit Mode Form ---
+            if st.session_state["pdf_info_edit_mode"]:
+                with st.form("pdf_info_edit_form"):
+                    st.subheader("📝 Edit PDF Info")
+
+                    row = st.session_state["pdf_info_df"].iloc[0]
+
+                    # Reference Info
+                    st.markdown(f"**PDF ID:** `{pdf_id}`")
+                    st.markdown(f"**Model:** `{row['model']}`")
+                    st.markdown(f"**Batch ID:** `{row['batch_id']}`")
+
+                    # Optional image
+                    if "bike_image" in row and row["bike_image"]:
+                        st.image(row["bike_image"], width=150, caption="Bike Image")
+
+                    # Editable fields
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        edited_year = st.number_input("Year", value=int(row["year"]), step=1, format="%d")
+                    with col2:
+                        brands_options = ["Yamaha", "Honda"]
+                        edited_brand = st.selectbox("Brand", brands_options, 
+                            index=brands_options.index(row["brand"]) if row["brand"] in brands_options else 0)
+                    with col3:
+                        cc_options = ["<200", "200-400", ">400"]
+                        edited_cc = st.selectbox("CC", cc_options, 
+                            index=cc_options.index(row["cc"]) if row["cc"] in cc_options else 0)
+
+                    # Submit buttons
+                    confirm_btn = st.form_submit_button("✅ Save Draft")
+                    cancel_btn = st.form_submit_button("❌ Cancel")
+
+                    if confirm_btn:
+                        # Year validation: must be a 4-digit number between 1000 and 9999
+                        if isinstance(edited_year, int) and 1000 <= edited_year <= 9999:
+                            st.session_state["pdf_info_df"] = pd.DataFrame([{
+                                "pdf_id": pdf_id,
+                                "year": edited_year,
+                                "brand": edited_brand,
+                                "model": row["model"],
+                                "batch_id": row["batch_id"],
+                                "bike_image": row.get("bike_image", None),
+                                "cc": edited_cc
+                            }])
+                            st.session_state["pdf_info_edit_mode"] = False
+                            st.success("✅ Draft saved in session.")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("❌ Please enter a valid year.")
+
+                    elif cancel_btn:
+                        st.session_state["pdf_info_edit_mode"] = False
+                        st.info("❌ Edit cancelled.")
+                        time.sleep(1)
+                        st.rerun()
+
+            st.divider()
+
+            # Reset draft from DB
+            if st.button("🔄 Reset Changes"):
+                st.session_state.pop("pdf_info_pdf_id", None)
+                st.session_state.pop("pdf_info_df", None)
+                st.session_state.pop("pdf_info_edit_mode", None)
+                st.session_state.pop("show_image_previews", None)
+                st.rerun()
+
+            # Later: Save to DB
+            if st.button("✅ Save changes"):
+                try:
+                    edited_row = st.session_state["pdf_info_df"].iloc[0].to_dict()
+
+                    # Perform update using SQLAlchemy
+                    stmt = (
+                        update(pdf_info_table)
+                        .where(pdf_info_table.c.pdf_id == edited_row["pdf_id"])
+                        .values({
+                            "year": edited_row["year"],
+                            "brand": edited_row["brand"],
+                            "model": edited_row["model"],
+                            "batch_id": edited_row["batch_id"],
+                            "bike_image": edited_row.get("bike_image", None),
+                            "cc": edited_row["cc"]
+                        })
+                    )
+
+                    with engine.begin() as conn:
+                        result = conn.execute(stmt)
+
+                    if result.rowcount == 0:
+                        st.warning("⚠️ No rows were updated. Please check if the PDF ID exists.")
+                    else:
+                        st.success("✅ PDF Info successfully updated in the database.")
+
+                    # Clear session state
+                    st.session_state.pop("pdf_info_pdf_id", None)
+                    st.session_state.pop("pdf_info_df", None)
+                    st.session_state.pop("pdf_info_edit_mode", None)
+                    st.session_state.pop("show_image_previews", None)
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"❌ Failed to update the database: {e}")
+
         # Edit MPL page
         elif st.session_state.edit_page_mpl_list:
             st.subheader("Edit: master_parts_list")
@@ -224,11 +397,29 @@ if st.session_state.edit_page:
                 # --- SESSION INITIALIZATION ---
                 st.session_state.setdefault("mpl_pdf_id", pdf_id)
                 st.session_state.setdefault("mpl_df", edit_mpl_df.copy())
+                st.session_state.setdefault("mpl_original_df", edit_mpl_df.copy())
                 st.session_state.setdefault("mpl_show_excel_reimport", False)
                 st.session_state.setdefault("mpl_edit_mode", False)
                 st.session_state.setdefault("mpl_reimport_temp_df", None)
 
-                st.dataframe(st.session_state["mpl_df"], use_container_width=True, hide_index=True)
+                # --- Section Number Filter ---
+                df_for_filter = st.session_state["mpl_df"].copy()
+
+                # Extract section number from section_id (e.g., A_B_C_3 → 3)
+                df_for_filter["section_no"] = df_for_filter["section_id"].str.extract(r"_(\d+)$")
+                df_for_filter["section_no"] = pd.to_numeric(df_for_filter["section_no"], errors="coerce")
+
+                section_numbers = sorted(df_for_filter["section_no"].dropna().unique().astype(int))
+                selected_section = st.selectbox("Filter by Section Number", ["All"] + [str(num) for num in section_numbers])
+
+                # Apply filter (this affects display only, not session storage)
+                if selected_section != "All":
+                    df_for_filter = df_for_filter[df_for_filter["section_no"] == int(selected_section)]
+
+                # Show filtered DataFrame
+                st.dataframe(df_for_filter.drop(columns=["section_no"]), use_container_width=True, hide_index=True)
+
+                #st.dataframe(st.session_state["mpl_df"], use_container_width=True, hide_index=True)
 
                 # --- Download Excel ---
                 buffer = io.BytesIO()
@@ -301,16 +492,15 @@ if st.session_state.edit_page:
                             st.session_state["mpl_df"] = edited_df
                             st.session_state["mpl_edit_mode"] = False
                             st.success("✅ Changes saved locally. Press 'Save Changes' to apply to database.")
-                            time.sleep(2)
+                            time.sleep(1)
                             st.rerun()
                         elif cancel_btn:
                             st.session_state["mpl_edit_mode"] = False
                             st.info("❌ Edit cancelled.")
-                            time.sleep(2)
+                            time.sleep(1)
                             st.rerun()
 
                 st.divider()
-                # --- FINAL DB SAVE ---
                 if st.button("🔄 Reset Changes"):
                     try:
                         with engine.connect() as conn_refresh:
@@ -325,19 +515,123 @@ if st.session_state.edit_page:
                     except Exception as e:
                         st.error(f"❌ Failed to reset changes: {e}")
 
-                if st.button("✅ Save Changes"):
-                    st.success("saved")
+                # --- FINAL DB SAVE ---
+                # Initial Save Changes button
+                if "mpl_save_pending" not in st.session_state and st.button("✅ Save Changes"):
                     try:
-                        with engine.begin() as conn2:
-                            conn2.execute(delete(mpl_table).where(mpl_table.c.pdf_id == pdf_id))
-                            st.session_state["mpl_df"].to_sql("master_parts_list", con=conn2, if_exists="append", index=False)
-                        st.success("✅ master_parts_list updated in the database.")
-                        # Clear out session state after save
-                        for key in ["mpl_df", "mpl_pdf_id", "mpl_edit_mode", "mpl_show_excel_reimport", "mpl_reimport_temp_df"]:
-                            st.session_state.pop(key, None)
-                        st.rerun()
+                        original_df = st.session_state["mpl_original_df"].copy()
+                        edited_df = st.session_state["mpl_df"].copy()
+
+                        # Strip whitespace from string columns before comparison
+                        original_df = strip_whitespace(original_df)
+                        edited_df = strip_whitespace(edited_df)
+
+                        # Ensure same structure
+                        common_cols = [col for col in edited_df.columns if col in original_df.columns and col != "mpl_id"]
+                        original_df = original_df.sort_values("mpl_id").reset_index(drop=True)
+                        edited_df = edited_df.sort_values("mpl_id").reset_index(drop=True)
+
+                        comparison = edited_df[["mpl_id"] + common_cols]
+                        original_comparison = original_df[["mpl_id"] + common_cols]
+
+                        diffs = (comparison[common_cols] != original_comparison[common_cols])
+                        changed_rows_mask = diffs.any(axis=1)
+                        rows_to_update = comparison[changed_rows_mask]
+
+                        original_ids = set(original_df["mpl_id"])
+                        rows_to_insert = edited_df[~edited_df["mpl_id"].isin(original_ids)]
+                        rows_to_delete = original_df[~original_df["mpl_id"].isin(edited_df["mpl_id"])]
+                        
+                        # Show summary
+                        if not rows_to_update.empty:
+                            st.info("🔄 Rows that will be UPDATED:")
+                            st.dataframe(rows_to_update, use_container_width=True)
+                        if not rows_to_insert.empty:
+                            st.info("➕ Rows that will be INSERTED:")
+                            st.dataframe(rows_to_insert, use_container_width=True)
+                        if not rows_to_delete.empty:
+                            st.info("❌ Rows that will be DELETED:")
+                            st.dataframe(rows_to_delete, use_container_width=True)
+                        # If no changes at all, show message and skip buttons
+                        if rows_to_update.empty and rows_to_insert.empty and rows_to_delete.empty:
+                            st.success("✅ No changes detected.")
+                            st.stop()
+
+                        # Save intermediate state for confirmation
+                        st.session_state["mpl_save_pending"] = {
+                            "rows_to_update": rows_to_update,
+                            "rows_to_insert": rows_to_insert,
+                            "rows_to_delete": rows_to_delete
+                        }
+
+                        st.warning("⚠️ Please confirm to apply these changes.")
                     except Exception as e:
-                        st.error(f"❌ Failed to save to database: {e}")
+                        st.error(f"❌ Failed during change detection: {e}")
+
+                # If pending confirmation, show confirm/cancel buttons
+                if "mpl_save_pending" in st.session_state:
+                    col1, col2 = st.columns([1, 1])
+                    with col1:
+                        if st.button("✅ Confirm Apply"):
+                            try:
+                                changes = st.session_state["mpl_save_pending"]
+                                rows_to_update = changes["rows_to_update"]
+                                rows_to_insert = changes["rows_to_insert"]
+                                rows_to_delete = changes["rows_to_delete"]
+
+                                # --- Validate INSERT rows ---
+                                required_cols = ["part_no", "description", "ref_no", "section_id", "pdf_id"]
+
+                                # Define required fields for master_parts_list
+                                required_cols = ["part_no", "description", "ref_no", "section_id", "pdf_id"]
+
+                                # --- Validate UPDATE rows ---
+                                for col in required_cols:
+                                    invalid_rows = rows_to_update[col].isna() | rows_to_update[col].astype(str).str.strip().eq("")
+                                    if invalid_rows.any():
+                                        bad_indices = rows_to_update[invalid_rows].index.tolist()
+                                        st.error(f"❌ Cannot update: Column '{col}' has blank/null in rows: {bad_indices}")
+                                        st.stop()
+
+                                # --- Validate INSERT rows ---
+                                for col in required_cols:
+                                    invalid_rows = rows_to_insert[col].isna() | rows_to_insert[col].astype(str).str.strip().eq("")
+                                    if invalid_rows.any():
+                                        bad_indices = rows_to_insert[invalid_rows].index.tolist()
+                                        st.error(f"❌ Cannot insert: Column '{col}' has blank/null in rows: {bad_indices}")
+                                        st.stop()
+
+                                with engine.begin() as conn:
+                                    for _, row in rows_to_update.iterrows():
+                                        stmt = (
+                                            update(mpl_table)
+                                            .where(mpl_table.c.mpl_id == row["mpl_id"])
+                                            .values({col: row[col] for col in row.index if col != "mpl_id"})
+                                        )
+                                        conn.execute(stmt)
+
+                                    if not rows_to_insert.empty:
+                                        rows_to_insert.to_sql("master_parts_list", con=conn, if_exists="append", index=False)
+
+                                    for mpl_id in rows_to_delete["mpl_id"]:
+                                        conn.execute(delete(mpl_table).where(mpl_table.c.mpl_id == mpl_id))
+
+                                # Clear state
+                                for key in ["mpl_df", "mpl_pdf_id", "mpl_edit_mode", "mpl_show_excel_reimport", "mpl_reimport_temp_df", "mpl_original_df", "mpl_save_pending"]:
+                                    st.session_state.pop(key, None)
+
+                                st.success("✅ Changes successfully saved to the database.")
+                                time.sleep(1)
+                                st.rerun()
+
+                            except Exception as e:
+                                st.error(f"❌ Failed to apply changes: {e}")
+                    with col2:
+                        if st.button("❌ Cancel Save"):
+                            st.session_state.pop("mpl_save_pending", None)
+                            st.info("❌ Save operation cancelled.")
+                            time.sleep(1)
+                            st.rerun()
 
         # Edit PDF Section page
         elif st.session_state.edit_page_pdf_section:
@@ -356,6 +650,8 @@ if st.session_state.edit_page:
             total_pages = (total_sections - 1) // sections_per_page + 1
             st.session_state.setdefault("section_page", 0)
             current_page = st.session_state["section_page"]
+
+            st.session_state.setdefault("selected_section_id", None)
 
             if df.empty:
                 st.warning("No PDF sections found for this PDF ID.")
@@ -391,7 +687,9 @@ if st.session_state.edit_page:
                             """)
 
                         with btn_col:
-                            st.button("Edit Section Details", key=f"edit_section_{row['section_id']}")
+                            if st.button("View Details", key=f"view_section_{row['section_id']}"):
+                                st.session_state["selected_section_id"] = row["section_id"]
+                                st.rerun()
 
                     st.divider()
 

@@ -808,41 +808,9 @@ def display_image_previews(df, title, brand):
             else:
                 with cols[i]:
                     st.warning("⚠️ No valid image data")
-                    
-def advanced_display_image_previews(image_data, title, brand):
-    st.subheader(title)
-
-    num_cols = 5 if brand == "Honda" else 6
-    rows_per_page = 2
-    total_rows = (len(image_data) + num_cols - 1) // num_cols
-    total_pages = (total_rows + rows_per_page - 1) // rows_per_page
-
-    if "image_page" not in st.session_state:
-        st.session_state.image_page = 0
-
-    start_row = st.session_state.image_page * rows_per_page
-    end_row = start_row + rows_per_page
-
-    rows = [image_data[i:i + num_cols] for i in range(0, len(image_data), num_cols)]
-    rows_to_show = rows[start_row:end_row]
-
-    for row in rows_to_show:
-        cols = st.columns(num_cols)
-        for i, item in enumerate(row):
-            image = Image.open(BytesIO(item['image']))
-            with cols[i]:
-                st.image(image,
-                         caption=f"PDF ID: {item['pdf_id']}\nSection: {item['section']}",
-                         use_container_width=True)
-
-    st.markdown("---")
-    st.write(f"Page {st.session_state.image_page + 1} of {total_pages}")
-
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col1:
-        if st.button("⬅️ Back", key="image_back", disabled=(st.session_state.image_page == 0)):
-            st.session_state.image_page -= 1
-    with col3:
-        if st.button("Next ➡️", key="image_next", disabled=(st.session_state.image_page >= total_pages - 1)):
-            st.session_state.image_page += 1
-
+ 
+ 
+def strip_whitespace(df):
+    for col in df.select_dtypes(include=["object", "string"]).columns:
+        df[col] = df[col].astype(str).str.strip()
+    return df
