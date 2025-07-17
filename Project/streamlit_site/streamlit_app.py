@@ -1,6 +1,7 @@
-from imports import *
-
+import streamlit as st
 st.set_page_config(layout="wide")
+
+from imports import *
 
 # --- PAGE SETUP ---
 signin_page = st.Page(
@@ -10,15 +11,15 @@ signin_page = st.Page(
     default=True,
 )
 
-manual_import_page = st.Page(
+pdf_import_page = st.Page(
     page="views/manual_import.py",
-    title="Import PDF Manuals here",
+    title="PDF Manual Import",
     icon="📥",
 )
 
-db_manage_page = st.Page(
+pdf_manage_page = st.Page(
     page="views/manage_database.py",
-    title="Manage Database",
+    title="Manage Bikes",
     icon="🛢️",
 )
 
@@ -40,13 +41,22 @@ dashbaord_2_page = st.Page(
     icon="📊",
 )
 
-test_page = st.Page(
-    page="views/test.py",
-    title="Testing Page",
-)
-
 # --- DEFAULT to guest if no user_type in session ---
 valid_user_types = {"guest", "staff", "admin"}
+
+# --- Define page groups ---
+guest_pages = {
+    "User": [signin_page],
+}
+staff_pages = {
+    "Staff": [pdf_import_page, pdf_manage_page],
+}
+dashboard_pages = {
+    "Dashboards": [dashboard_1_page, dashbaord_2_page],
+}
+admin_pages = {
+    "Admin": [acc_manage_page],
+}
 
 if "user_type" not in st.session_state:
     cookie_user_type = cookies.get("user_type", "").lower().strip()
@@ -59,25 +69,23 @@ if "user_type" not in st.session_state:
         st.session_state.user_type = "guest"
         st.session_state.user_name = ""
 
-# --- BASED ON ROLE ---
+# Build allowed pages dynamically
+accessible_pages = {}
+
 if st.session_state.user_type == "guest":
-    pg = st.navigation({
-        "User": [signin_page],
-    })
+    accessible_pages.update(guest_pages)
 
-else:
-    if st.session_state.user_type == "staff":
-        pg = st.navigation({
-            "Staff": [manual_import_page, db_manage_page, test_page],
-            "Dashboards": [dashboard_1_page, dashbaord_2_page],
-        })
+elif st.session_state.user_type == "staff":
+    accessible_pages.update(staff_pages)
+    accessible_pages.update(dashboard_pages)
 
-    elif st.session_state.user_type == "admin":
-        pg = st.navigation({
-            "Staff": [manual_import_page, db_manage_page, test_page],
-            "Dashboards": [dashboard_1_page, dashbaord_2_page],
-            "Admin": [acc_manage_page],
-        })
+elif st.session_state.user_type == "admin":
+    accessible_pages.update(staff_pages)
+    accessible_pages.update(dashboard_pages)
+    accessible_pages.update(admin_pages)
+
+# --- Log Out for authenticated users ---
+if st.session_state.user_type != "guest":
     with st.sidebar:
         if st.button("🔓 Log Out"):
             cookies["user_type"] = "guest"
@@ -92,4 +100,5 @@ with st.sidebar:
     st.json(st.session_state)
 
 # --- Run navigation ---
+pg = st.navigation(accessible_pages)
 pg.run()
