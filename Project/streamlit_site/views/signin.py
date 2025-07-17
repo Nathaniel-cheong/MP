@@ -3,7 +3,7 @@ from imports import *
 st.title("Staff Log In")
 
 # Expiry time set to 1 day from now
-expiry = datetime.utcnow() + timedelta(days=1)
+expiry = datetime.now(timezone.utc) + timedelta(days=1)
 
 if st.button("Staff: Tom"):
     st.session_state.user_type = "staff"
