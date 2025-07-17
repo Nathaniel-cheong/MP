@@ -73,19 +73,27 @@ if "cart_data" not in st.session_state:
 cart = st.session_state.cart_data
 
 # ─── QR-only detail view ─────────────────────────────────────────────────
+# ─── QR‑only receipt view ─────────────────────────────────────────────────
 if is_qr_view:
     bid = qp["id"][0] if isinstance(qp["id"], list) else qp["id"]
 
     eb, mpl = reflect_tables()
     eb_mpl = join(eb, mpl, eb.c.mpl_id == mpl.c.mpl_id)
 
+    # pull in both order header info and line‑items
     with engine.connect() as conn:
         stmt = (
             select([
                 eb.c.part_no,
                 mpl.c.description,
                 eb.c.quantity,
-                eb.c.order_date
+                eb.c.order_date,
+                eb.c.purchase_type,
+                eb.c.customer_name,
+                eb.c.contact,
+                eb.c.email,
+                eb.c.postal_code,
+                eb.c.address,
             ])
             .select_from(eb_mpl)
             .where(eb.c.basket_id == bid)
@@ -93,16 +101,41 @@ if is_qr_view:
         )
         rows = conn.execute(stmt).fetchall()
 
-    st.markdown(f"## Order Details for Basket {bid}")
-    if rows:
-        for part, desc, qty, od in rows:
-            c1, c2 = st.columns([3,7])
-            with c1: st.markdown(f"**{part}**")
-            with c2: st.write(desc)
-            st.write(f"Quantity: {qty}  •  Ordered on {od}")
-            st.markdown("---")
-    else:
+    if not rows:
         st.info("No items found for this basket.")
+        st.stop()
+
+    # unpack header info from the first row
+    _, _, _, _, purchase_type, customer_name, contact, email, postal_code, address = rows[0]
+
+    # Receipt header
+    st.markdown("# 🧾 Receipt")
+    st.write(f"**Basket ID:** {bid}")
+    st.write(f"**Purchase Type:** {purchase_type}")
+    st.write(f"**Name:** {customer_name}")
+    st.write(f"**Contact:** {contact}")
+    st.write(f"**Email:** {email}")
+    st.write(f"**Postal Code:** {postal_code}")
+    st.write(f"**Address:** {address}")
+    st.markdown("---")
+
+    # Build a pandas DataFrame of line items
+    import pandas as pd
+    data = [
+        {
+            "Part No":      part,
+            "Description":  desc,
+            "Quantity":     qty,
+            "Order Date":   od.strftime("%Y-%m-%d"),
+        }
+        for part, desc, qty, od, *rest in rows
+    ]
+    df = pd.DataFrame(data)
+
+    # Render as a nice table
+    st.table(df)
+
+    st.markdown("### Thank you for your purchase!")
     st.stop()
 
 # ─── QR confirmation block ────────────────────────────────────────────────
