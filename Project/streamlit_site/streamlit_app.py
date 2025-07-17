@@ -59,15 +59,19 @@ admin_pages = {
 }
 
 if "user_type" not in st.session_state:
-    cookie_user_type = cookies.get("user_type", "").lower().strip()
-    cookie_user_name = cookies.get("user_name", "").strip()
+    if cookies.ready():
+        cookie_user_type = cookies.get("user_type", "").lower().strip()
+        cookie_user_name = cookies.get("user_name", "").strip()
 
-    if cookie_user_type in valid_user_types:
-        st.session_state.user_type = cookie_user_type
-        st.session_state.user_name = cookie_user_name
+        if cookie_user_type in valid_user_types:
+            st.session_state.user_type = cookie_user_type
+            st.session_state.user_name = cookie_user_name
+        else:
+            st.session_state.user_type = "guest"
+            st.session_state.user_name = ""
     else:
-        st.session_state.user_type = "guest"
-        st.session_state.user_name = ""
+        st.warning("Cookies not ready yet. Please refresh.")
+        st.stop()
 
 # Build allowed pages dynamically
 accessible_pages = {}
