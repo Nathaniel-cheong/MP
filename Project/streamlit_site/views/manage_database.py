@@ -1,10 +1,8 @@
-# Adjust size of images and number of section per page based off brand
-
 from imports import *
 import io
-st.title("Manage PDFs")
+st.title("Manage Bikes")
 
-for key in ["edit_page", "edit_page_mpl_list", "edit_page_pdf_info", "edit_page_pdf_section"]:
+for key in ["edit_page", "edit_page_mpl_list", "edit_page_pdf_info", "edit_page_pdf_section", 'pdf_updated']:
     st.session_state.setdefault(key, False)
 
 # Reflect the metadata
@@ -55,19 +53,36 @@ if st.session_state.edit_page == False:
 
         with st.container():
             col1, col2, col3 = st.columns(3)
-            with col1:
-                selected_brand = st.selectbox("Filter by Brand", ["All"] + unique_brands)
-            with col2:
-                selected_year = st.selectbox("Filter by Year", ["All"] + [str(year) for year in unique_years])
-            with col3:
-                selected_cc = st.selectbox("Filter by CC", ["All"] + [str(cc) for cc in unique_ccs])
 
-        if selected_brand != "All":
-            pdf_details_df = pdf_details_df[pdf_details_df["brand"] == selected_brand]
-        if selected_year != "All":
-            pdf_details_df = pdf_details_df[pdf_details_df["year"] == int(selected_year)]
-        if selected_cc != "All":
-            pdf_details_df = pdf_details_df[pdf_details_df["cc"].astype(str) == selected_cc]
+            with col1:
+                st.session_state.setdefault("filter_brand", "All")
+                st.session_state["filter_brand"] = st.selectbox("Filter by Brand", ["All"] + unique_brands, index=(["All"] + unique_brands).index(st.session_state["filter_brand"]))
+
+            with col2:
+                st.session_state.setdefault("filter_year", "All")
+                year_options = ["All"] + [str(year) for year in unique_years]
+                st.session_state["filter_year"] = st.selectbox("Filter by Year", year_options, index=year_options.index(st.session_state["filter_year"]))
+
+            with col3:
+                st.session_state.setdefault("filter_cc", "All")
+                cc_options = ["All"] + [str(cc) for cc in unique_ccs]
+                st.session_state["filter_cc"] = st.selectbox("Filter by CC", cc_options, index=cc_options.index(st.session_state["filter_cc"]))
+
+    selected_brand = st.session_state["filter_brand"]
+    selected_year = st.session_state["filter_year"]
+    selected_cc = st.session_state["filter_cc"]
+
+    if not pdf_details_df.empty:
+        pdf_details_df = pdf_details_df.copy()
+
+        if st.session_state["filter_brand"] != "All":
+            pdf_details_df = pdf_details_df[pdf_details_df["brand"] == st.session_state["filter_brand"]]
+
+        if st.session_state["filter_year"] != "All":
+            pdf_details_df = pdf_details_df[pdf_details_df["year"] == int(st.session_state["filter_year"])]
+
+        if st.session_state["filter_cc"] != "All":
+            pdf_details_df = pdf_details_df[pdf_details_df["cc"].astype(str) == st.session_state["filter_cc"]]
 
         st.divider()
 
@@ -85,6 +100,8 @@ if st.session_state.edit_page == False:
                         st.write("🚫 No image available")
 
                 with pdf_details_col:
+                    details_col, changes_col = st.columns(2)
+
                     ts = datetime.fromisoformat(str(row['timestamp']))
                     date_str = ts.strftime("%Y-%m-%d")
                     time_str = ts.strftime("%H:%M")
@@ -94,22 +111,27 @@ if st.session_state.edit_page == False:
                         else '<span style="color:red; font-weight:bold;">Not Active</span>'
                     )
 
-                    st.markdown(f"""
-                        <u><b>PDF DETAILS:</b></u><br>
-                        <b>Model:</b> {row['model']}<br>
-                        <b>Batch ID:</b> {row['batch_id']}<br>
-                        <b>Year:</b> {row['year']}<br>
-                        <b>Brand:</b> {row['brand']}<br>
-                        <b>CC:</b> {row['cc']}<br>
-                        <u><b>UPLOAD DETAILS:</b></u><br>
-                        <b>Staff:</b> {row['account_id']}<br>
-                        <b>Date:</b> {date_str}<br>
-                        <b>Time:</b> {time_str}<br>
-                        Status: {status_str}
-                    """, unsafe_allow_html=True)
+                    with details_col:
+                        st.markdown(f"""
+                            <u><b>PDF DETAILS:</b></u><br>
+                            <b>Model:</b> {row['model']}<br>
+                            <b>Batch ID:</b> {row['batch_id']}<br>
+                            <b>Year:</b> {row['year']}<br>
+                            <b>Brand:</b> {row['brand']}<br>
+                            <b>CC:</b> {row['cc']}<br>
+                        """, unsafe_allow_html=True)
+
+                    with changes_col:
+                        st.markdown(f"""
+                            <u><b>RECENT CHANGES:</b></u><br>
+                            <b>Staff:</b> {row['account_id']}<br>
+                            <b>Date:</b> {date_str}<br>
+                            <b>Time:</b> {time_str}<br>
+                            <b>Status</b>: {status_str}
+                        """, unsafe_allow_html=True)
 
                 with edit_button_col:
-                    if st.button("Edit Details", key=f"edit_{row['pdf_id']}"):
+                    if st.button("✏️ Edit Details", key=f"edit_{row['pdf_id']}"):
                         st.session_state.edit_page = True
                         st.session_state.selected_pdf_id = row['pdf_id']
                         st.rerun()
@@ -134,7 +156,7 @@ if st.session_state.edit_page == False:
                     confirm_button_key = f"confirm_button_{row['pdf_id']}"
                     cancel_button_key = f"cancel_button_{row['pdf_id']}"
 
-                    if st.button("Delete", key=delete_key):
+                    if st.button("❌ Delete", key=delete_key):
                         st.session_state[confirm_key] = True
 
                     if st.session_state.get(confirm_key, False):
@@ -373,6 +395,8 @@ if st.session_state.edit_page:
                         st.warning("⚠️ No rows were updated. Please check if the PDF ID exists.")
                     else:
                         st.success("✅ PDF Info successfully updated in the database.")
+                        st.session_state['pdf_updated'] = True
+                        st.cache_data.clear()
 
                     # Clear session state
                     st.session_state.pop("pdf_info_pdf_id", None)
@@ -418,8 +442,6 @@ if st.session_state.edit_page:
 
                 # Show filtered DataFrame
                 st.dataframe(df_for_filter.drop(columns=["section_no"]), use_container_width=True, hide_index=True)
-
-                #st.dataframe(st.session_state["mpl_df"], use_container_width=True, hide_index=True)
 
                 # --- Download Excel ---
                 buffer = io.BytesIO()
@@ -621,6 +643,8 @@ if st.session_state.edit_page:
                                     st.session_state.pop(key, None)
 
                                 st.success("✅ Changes successfully saved to the database.")
+                                st.session_state['pdf_updated'] = True
+                                st.cache_data.clear()
                                 time.sleep(1)
                                 st.rerun()
 
@@ -637,29 +661,184 @@ if st.session_state.edit_page:
         elif st.session_state.edit_page_pdf_section:
             st.subheader("Edit: pdf_section")
 
-            # Only load filtered data for this pdf_id
-            df = pd.read_sql_query(
+            # --- Only fetch all sections once ---
+            all_sections_df = pd.read_sql_query(
                 text("SELECT * FROM pdf_section WHERE pdf_id = :pdf_id"),
                 con=conn,
                 params={"pdf_id": pdf_id}
             )
 
-            # Pagination setup
-            sections_per_page = 10
-            total_sections = len(df)
-            total_pages = (total_sections - 1) // sections_per_page + 1
-            st.session_state.setdefault("section_page", 0)
-            current_page = st.session_state["section_page"]
+            all_sections_df["__sort_key__"] = all_sections_df["section_no"].apply(section_sort_key)
+            all_sections_df = all_sections_df.sort_values("__sort_key__").drop(columns="__sort_key__").reset_index(drop=True)
 
-            st.session_state.setdefault("selected_section_id", None)
+            # --- CASE 1: A section row has been selected to edit ---
+            if st.session_state.get("selected_section_id"):
+                selected_row = all_sections_df[all_sections_df["section_id"] == st.session_state["selected_section_id"]]
+                if st.button("🔙 Back to Section List"):
+                            st.session_state["selected_section_id"] = None
+                            st.rerun()
 
-            if df.empty:
-                st.warning("No PDF sections found for this PDF ID.")
+                if not selected_row.empty:
+                    st.subheader(f"Editing Section ID: {st.session_state['selected_section_id']}")
+
+                    # --- Initialize session state ---
+                    st.session_state.setdefault("section_edit_df", selected_row.copy())
+                    st.session_state.setdefault("section_edit_mode", False)
+                    st.session_state.setdefault("section_edit_image", False)
+
+                    st.dataframe(st.session_state["section_edit_df"], use_container_width=True)
+
+                    # Re-upload Image
+                    if st.button("📤 Upload Image", key="upload_section_image_button"):
+                        st.session_state["section_edit_image"] = True
+
+                    if st.session_state["section_edit_image"]:
+                        with st.form("upload_section_image_form"):
+                            st.subheader("Upload Section Image")
+
+                            uploaded_image = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+                            preview_image = st.form_submit_button("🖼️ Preview Image")
+
+                            if preview_image:
+                                if uploaded_image:
+                                    try:
+                                        image_data = uploaded_image.getvalue()
+                                        st.image(image_data, width=200)
+                                    except Exception as e:
+                                        st.error("❌ Unable to read image.")
+                                        st.caption(str(e))
+                                else:
+                                    st.warning("⚠️ No image uploaded.")
+
+                            st.divider()
+                            confirm_upload = st.form_submit_button("✅ Confirm Upload")
+                            cancel_upload = st.form_submit_button("❌ Cancel")
+
+                            if confirm_upload:
+                                if uploaded_image:
+                                    try:
+                                        image_data = uploaded_image.getvalue()
+                                        st.session_state["section_edit_df"].iloc[0, st.session_state["section_edit_df"].columns.get_loc("section_image")] = image_data
+                                        st.success("✅ Image saved to draft.")
+                                        time.sleep(1)
+                                        st.session_state["section_edit_image"] = False
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error("❌ Error saving image to draft.")
+                                        st.caption(str(e))
+                                else:
+                                    st.warning("⚠️ No image uploaded.")
+
+                            if cancel_upload:
+                                st.info("❌ Image upload cancelled.")
+                                st.session_state["section_edit_image"] = False
+                                st.rerun()
+
+                    # Enable Edit Mode
+                    if st.button("✏️ Edit Table", key="section_edit_button"):
+                        st.session_state["section_edit_mode"] = True
+
+                    # Edit Mode Form
+                    if st.session_state["section_edit_mode"]:
+                        with st.form("section_edit_form"):
+                            st.subheader("📝 Edit Section")
+
+                            row = st.session_state["section_edit_df"].iloc[0]
+
+                            # Reference Info
+                            st.markdown(f"**Section ID:** `{row['section_id']}`")
+
+                            # Editable fields
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                edited_name = st.text_input("Section Name", value=row["section_name"])
+                            with col2:
+                                edited_no = st.text_input("Section No", value=row["section_no"])
+
+                            # Submit buttons
+                            confirm_btn = st.form_submit_button("✅ Save Draft")
+                            cancel_btn = st.form_submit_button("❌ Cancel")
+
+                            if confirm_btn:
+                                st.session_state["section_edit_df"] = pd.DataFrame([{
+                                    "section_id": row["section_id"],
+                                    "section_name": edited_name,
+                                    "section_no": edited_no,
+                                    "pdf_id": row["pdf_id"],
+                                    "section_image": row.get("section_image", None)
+                                }])
+                                st.session_state["section_edit_mode"] = False
+                                st.success("✅ Draft saved in session.")
+                                time.sleep(1)
+                                st.rerun()
+                            elif cancel_btn:
+                                st.session_state["section_edit_mode"] = False
+                                st.info("❌ Edit cancelled.")
+                                time.sleep(1)
+                                st.rerun()
+
+                    st.divider()
+
+                    # Reset draft from DB
+                    if st.button("🔄 Reset Changes"):
+                        st.session_state.pop("section_edit_df", None)
+                        st.session_state.pop("section_edit_mode", None)
+                        st.rerun()
+
+                    # Save changes to DB
+                    if st.button("✅ Save changes"):
+                        try:
+                            edited_row = st.session_state["section_edit_df"].iloc[0].to_dict()
+
+                            # Perform update using SQLAlchemy
+                            stmt = (
+                                update(pdf_section_table)
+                                .where(pdf_section_table.c.section_id == edited_row["section_id"])
+                                .values({
+                                    "section_name": edited_row["section_name"],
+                                    "section_no": edited_row["section_no"],
+                                    "section_image": edited_row.get("section_image", None)
+                                })
+                            )
+
+                            with engine.begin() as conn:
+                                result = conn.execute(stmt)
+
+                            if result.rowcount == 0:
+                                st.warning("⚠️ No rows were updated. Please check if the Section ID exists.")
+                            else:
+                                st.success("✅ Section Info successfully updated in the database.")
+                                st.session_state['pdf_updated'] = True
+                                st.cache_data.clear()
+
+                            # Clear session state
+                            st.session_state.pop("section_edit_df", None)
+                            st.session_state.pop("section_edit_mode", None)
+                            st.session_state["selected_section_id"] = None
+                            st.rerun()
+
+                        except Exception as e:
+                            st.error(f"❌ Failed to update the database: {e}")
+
+                else:
+                    st.error("⚠️ Could not find the selected section.")
+                st.stop()
+
+            # --- CASE 2: No section selected, show paginated list ---
             else:
-                # Get page slice
+                sections_per_page = 8
+                total_sections = len(all_sections_df)
+                total_pages = (total_sections - 1) // sections_per_page + 1
+                st.session_state.setdefault("section_page", 0)
+                current_page = st.session_state["section_page"]
+
+                if all_sections_df.empty:
+                    st.warning("No PDF sections found for this PDF ID.")
+                    st.stop()
+
                 start_idx = current_page * sections_per_page
                 end_idx = start_idx + sections_per_page
-                current_df = df.iloc[start_idx:end_idx]
+                current_df = all_sections_df.iloc[start_idx:end_idx]
 
                 for idx, row in current_df.iterrows():
                     with st.container():
@@ -681,13 +860,14 @@ if st.session_state.edit_page:
 
                         with info_col:
                             st.markdown(f"""
-                            **Section ID:** `{row['section_id']}`  
-                            **Name:** {row['section_name']}  
-                            **Section No:** {row['section_no']}  
-                            """)
+                                <u><b>SECTION INFO:</b></u><br>
+                                <b>Section ID:</b><br>{row['section_id']}<br>
+                                <b>Name:</b><br>{row['section_name']}<br>
+                                <b>Section No:</b><br>{row['section_no']}<br>
+                            """, unsafe_allow_html=True)
 
                         with btn_col:
-                            if st.button("View Details", key=f"view_section_{row['section_id']}"):
+                            if st.button("Edit Details", key=f"edit_section_{row['section_id']}"):
                                 st.session_state["selected_section_id"] = row["section_id"]
                                 st.rerun()
 
@@ -707,3 +887,39 @@ if st.session_state.edit_page:
                         if st.button("Next ➡️", key="next_page"):
                             st.session_state["section_page"] += 1
                             st.rerun()
+
+        # Logging info into logs when a table is edited
+        if st.session_state['pdf_updated']:
+            time.sleep(1)
+            try:
+                Session = sessionmaker(bind=engine)
+                with Session.begin() as session:
+                    # Step 1: Set is_current = 0 for existing log rows for this pdf_id
+                    session.execute(
+                        update(pdf_log_table)
+                        .where(pdf_log_table.c.pdf_id == pdf_id)
+                        .where(pdf_log_table.c.is_current == 1)
+                        .values({
+                            "is_current": 0,
+                            "is_active": 0
+                        })
+                    )
+
+                    # Step 2: Insert the new log row
+                    logged_changes = pd.DataFrame([{
+                        "pdf_id": pdf_id,
+                        "account_id": st.session_state["user_name"],
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "is_active": 1,
+                        "is_current": 1
+                    }])
+
+                    logged_changes.to_sql("pdf_log", con=session.connection(), if_exists="append", index=False)
+
+                # If all went well, reset the session flag
+                st.session_state['pdf_updated'] = False
+
+            except Exception as e:
+                st.error(f"❌ Failed to update PDF log: {e}")
+                st.stop()
+                

@@ -12,16 +12,23 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from PIL import Image as PILImage
 from io import BytesIO
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 
 import streamlit as st
 from streamlit_cookies_manager import EncryptedCookieManager
 
-# Set up cookie manager
-cookies = EncryptedCookieManager(
+class ExtendedEncryptedCookieManager(EncryptedCookieManager):
+    def set_cookie_with_expiry(self, key, value, expires_at):
+        self[key] = value
+        # Ensure metadata storage exists
+        if not hasattr(self, "_cookies_metadata") or self._cookies_metadata is None:
+            self._cookies_metadata = {}
+        self._cookies_metadata[key] = {"expires_at": expires_at.isoformat()}
+
+cookies = ExtendedEncryptedCookieManager(
     prefix="myapp_",
-    password="supersecret"
+    password="mpams"
 )
 
 if not cookies.ready():
@@ -816,10 +823,20 @@ def display_image_previews(df, title, brand):
                         st.warning("⚠️ Unable to display image")
             else:
                 with cols[i]:
-                    st.warning("⚠️ No valid image data")
- 
+                    st.warning("⚠️ No valid image data") 
  
 def strip_whitespace(df):
     for col in df.select_dtypes(include=["object", "string"]).columns:
         df[col] = df[col].astype(str).str.strip()
     return df
+
+def section_sort_key(val):
+    # Try to extract letter and number parts
+    match = re.match(r'^([A-Za-z]+)?-?(\d+)$', str(val).strip())
+    if match:
+        letter_part = match.group(1) or ""
+        number_part = int(match.group(2))
+        return (letter_part, number_part)
+    else:
+        return ("~", float('inf'))  # put any non-matching value at the end
+

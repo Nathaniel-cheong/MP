@@ -6,7 +6,7 @@ bugs:
 
 from imports import *
 import io
-st.title("Manual Imports")
+st.title("PDF Manual Imports")
 
 # --- Init ---
 if "file_states" not in st.session_state:
