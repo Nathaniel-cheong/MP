@@ -823,13 +823,8 @@ def display_image_previews(df, title, brand):
                         st.warning("⚠️ Unable to display image")
             else:
                 with cols[i]:
-<<<<<<< HEAD
-                    st.warning("⚠️ No valid image data")
-
-=======
                     st.warning("⚠️ No valid image data") 
- 
->>>>>>> Nat2
+
 def strip_whitespace(df):
     for col in df.select_dtypes(include=["object", "string"]).columns:
         df[col] = df[col].astype(str).str.strip()
