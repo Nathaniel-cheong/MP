@@ -242,7 +242,10 @@ def add_to_cart(part):
 
     st.session_state.just_added = (part, qty)
     _save_cart_cookie()
-
+    # if they add something new, show the cart—not the old QR screen
+    st.session_state.show_qr = False
+    st.session_state.view    = "cart"
+    
 # ─── INITIALIZE SESSION STATE ──────────────────────────────────────────────
 for k,v in {
     "page_num":0, "current_brand":None, "current_model":None,
@@ -308,7 +311,7 @@ if curr == 0:
     cols = st.columns([1]*len(brands)+[len(brands)], gap="small")
     for col,b in zip(cols[:-1], brands):
         with col:
-            url = { "Honda":str(IMAGE_DIR / "honda.svg"), "Yamaha":str(IMAGE_DIR / "Yamaha_Logo.jpg") }.get(b)
+            url = { "Honda":str(IMAGE_DIR / "honda.jpg"), "Yamaha":str(IMAGE_DIR / "Yamaha_Logo.jpg") }.get(b)
             if url and Path(url).exists(): st.image(url, width=250)
             else:   st.write(b)
             st.button(b, on_click=go_to_brand, args=(b,), key=f"brand_{b}")
@@ -478,7 +481,7 @@ elif curr == 4:
                     with c2:
                         st.write(desc)
                     with c3:
-                        st.number_input("", min_value=1, value=1, key=f"add_qty_{part_no}")
+                        st.number_input("Qty:", min_value=1, value=1, key=f"add_qty_{part_no}")
                     with c4:
                         st.button("Add to Cart", on_click=add_to_cart, args=(part_no,), key=f"add_{part_no}")
                 else:
