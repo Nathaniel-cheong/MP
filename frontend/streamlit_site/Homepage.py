@@ -71,6 +71,7 @@ def get_brands():
               FROM pdf_info pi
               JOIN pdf_log   pl ON pi.pdf_id = pl.pdf_id
              WHERE pl.is_active = 1
+               AND pl.is_current = 1
         """)).fetchall()
     return [r[0] for r in rows]
 
@@ -84,6 +85,7 @@ def get_years(brand: str, cc: str):
              WHERE pi.brand     = :b
                AND pi.cc        = :c
                AND pl.is_active = 1
+               AND pl.is_current = 1
              ORDER BY pi.year DESC
         """), {"b": brand, "c": cc}).fetchall()
     return [r[0] for r in rows]
@@ -98,6 +100,7 @@ def get_cc_list(brand: str):
               JOIN pdf_log    pl ON pi.pdf_id = pl.pdf_id
              WHERE pi.brand    = :b
                AND pl.is_active = 1
+               AND pl.is_current = 1
         """), {"b": brand}).fetchall()
     return [r[0] for r in rows]
 
@@ -113,6 +116,7 @@ def get_models(brand: str, cc: int):
              WHERE pi.brand    = :b
                AND pi.cc       = :c
                AND pl.is_active = 1
+               AND pl.is_current = 1                  
         """), {"b": brand, "c": cc}).fetchall()
     return [r[0] for r in rows]
 
@@ -121,15 +125,18 @@ def get_models(brand: str, cc: int):
 def get_sections(brand: str, model: str, cc: str):
     with get_engine().connect() as conn:
         rows = conn.execute(text("""
-            SELECT ps.section_name, ps.section_image
+            SELECT ps.section_id, ps.section_name, ps.section_image
               FROM pdf_section ps
               JOIN pdf_info    pi ON ps.pdf_id = pi.pdf_id
+              JOIN pdf_log     pl ON pi.pdf_id = pl.pdf_id
              WHERE pi.brand = :b
                AND pi.model = :m
                AND pi.cc    = :c
+               AND pl.is_active = 1
+               AND pl.is_current = 1
         """), {"b": brand, "m": model, "c": cc}).fetchall()
     return [
-        (r[0], bytes(r[1]) if isinstance(r[1], memoryview) else r[1])
+        (r[0], r[1], bytes(r[2]) if isinstance(r[2], memoryview) else r[2])
         for r in rows
     ]
 
@@ -181,7 +188,8 @@ def go_to_model(m):
     st.session_state.page_num       = 3
     _save_view_cookie()
 
-def go_to_section(sec, raw):
+def go_to_section(sec_id, sec, raw):
+    st.session_state.current_section_id = sec_id
     st.session_state.current_section = sec
     st.session_state.zoom_image      = raw
     st.session_state.page_num        = 4
@@ -312,8 +320,11 @@ if curr == 0:
     for col,b in zip(cols[:-1], brands):
         with col:
             url = { "Honda":str(IMAGE_DIR / "honda.jpg"), "Yamaha":str(IMAGE_DIR / "Yamaha_Logo.jpg") }.get(b)
-            if url and Path(url).exists(): st.image(url, width=250)
-            else:   st.write(b)
+            if url and Path(url).exists():
+                pil = PILImage.open(url).convert("RGB")
+                st.image(pil, width=250)
+            else:   
+                st.write(b)
             st.button(b, on_click=go_to_brand, args=(b,), key=f"brand_{b}")
 
 # Page 1: CC
@@ -382,12 +393,10 @@ elif curr == 2:
                 try:
                     img = process_image(raw, size)
                 except UnidentifiedImageError:
-                    pil = PILImage.open(str(DEFAULT_IMG)).convert("RGB")
-                    img = pil.resize(size, PILImage.BICUBIC)
+                    img = PILImage.open(str(DEFAULT_IMG)).convert("RGB").resize(size, PILImage.BICUBIC)
                 st.image(img, width=size[0])
             else:
-                pil = PILImage.open(str(DEFAULT_IMG)).convert("RGB")
-                img = pil.resize(size, PILImage.BICUBIC)
+                img = PILImage.open(str(DEFAULT_IMG)).convert("RGB").resize(size, PILImage.BICUBIC)
                 st.image(img, width=size[0])
 
             st.button(m, on_click=go_to_model, args=(m,), key=f"mdl_{m}")
@@ -400,15 +409,16 @@ elif curr == 3:
     secs = get_sections(b, m, cc)
 
     if search:
-        secs = [s for s in secs if search.lower() in s[0].lower()]
+        secs = [s for s in secs if search.lower() in s[1].lower()]
     cfg = BRAND_CONFIG.get(b, BRAND_CONFIG["__default__"])
     for i in range(0, len(secs), cfg["sections_per_row"]):
         chunk = secs[i : i + cfg["sections_per_row"]]
         cols = st.columns(cfg["sections_per_row"], gap="small")
-        for col, (name, raw) in zip(cols, chunk):
+        for col, (sec_id, name, raw) in zip(cols, chunk):
             with col:
-                st.image(process_image(raw, cfg["section_img_size"]))
-                st.button(name, on_click=go_to_section, args=(name, raw), key=f"sec_{name}")
+                img = process_image(raw, cfg["section_img_size"])
+                st.image(img, width=cfg["section_img_size"][0])
+                st.button(name, on_click=go_to_section, args=(sec_id,name, raw), key=f"sec_{sec_id}")
         st.markdown("---")
 
 # Page 4: Zoom & References
@@ -422,20 +432,14 @@ elif curr == 4:
     st.subheader(sect)
 
     # Only pull ref_nos for this exact PDF (brand/model/cc) and where is_active=1
+    sec_id = st.session_state.current_section_id
     with get_engine().connect() as conn:
         rs = conn.execute(text("""
             SELECT DISTINCT mpl.ref_no
               FROM master_parts_list mpl
-              JOIN pdf_section   ps ON mpl.section_id = ps.section_id
-              JOIN pdf_info      pi ON ps.pdf_id       = pi.pdf_id
-              JOIN pdf_log       pl ON pi.pdf_id       = pl.pdf_id
-             WHERE ps.section_name = :sn
-               AND pi.brand        = :b
-               AND pi.model        = :m
-               AND pi.cc           = :c
-               AND pl.is_active    = 1
+              WHERE mpl.section_id = :sid
              ORDER BY mpl.ref_no
-        """), {"sn": sect, "b": b, "m": m, "c": cc}).fetchall()
+        """), {"sid": sec_id}).fetchall()
     ref_nos = [r[0] for r in rs]
 
     # Ensure the zoom image is loaded
