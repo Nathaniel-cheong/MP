@@ -145,12 +145,14 @@ st.title("📋 RFQ Dashboard")
 
 qty_by_part  = filtered.groupby("Part No.")["Quantity"].sum()
 qty_by_brand = filtered.groupby("Brand")   ["Quantity"].sum()
+qty_by_model = filtered.groupby("Model")["Quantity"].sum()
 
 total_orders  = filtered["Basket ID"].nunique()
 most_part     = qty_by_part.idxmax()  if not qty_by_part.empty  else ""
-most_part_qty = qty_by_part.max()     if not qty_by_part.empty  else 0
+top_model     = qty_by_model.idxmax() if not qty_by_model.empty else ""
 top_brand     = qty_by_brand.idxmax() if not qty_by_brand.empty else ""
-top_brand_qty = qty_by_brand.max()    if not qty_by_brand.empty else 0
+
+
 
 # ─── METRICS CARDS ─────────────────────────────────────────────────────────
 st.markdown(f"""
@@ -187,6 +189,10 @@ st.markdown(f"""
   <div class="metric-card">
     <h2>{most_part}</h2>
     <p>Top Part</p>
+  </div>
+  <div class="metric-card">
+    <h2>{top_model}</h2>
+    <p>Top Model</p>
   </div>
   <div class="metric-card">
     <h2>{top_brand}</h2>
