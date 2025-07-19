@@ -72,7 +72,6 @@ if "cart_data" not in st.session_state:
     }
 cart = st.session_state.cart_data
 
-# ─── QR-only detail view ─────────────────────────────────────────────────
 # ─── QR‑only receipt view ─────────────────────────────────────────────────
 if is_qr_view:
     bid = qp["id"][0] if isinstance(qp["id"], list) else qp["id"]
