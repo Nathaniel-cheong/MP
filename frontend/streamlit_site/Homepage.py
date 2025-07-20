@@ -410,6 +410,10 @@ elif curr == 3:
 
     if search:
         secs = [s for s in secs if search.lower() in s[1].lower()]
+
+    if search and not secs:
+        st.warning("There is no such section.")
+
     cfg = BRAND_CONFIG.get(b, BRAND_CONFIG["__default__"])
     for i in range(0, len(secs), cfg["sections_per_row"]):
         chunk = secs[i : i + cfg["sections_per_row"]]
