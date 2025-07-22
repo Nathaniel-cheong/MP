@@ -841,3 +841,31 @@ def section_sort_key(val):
     else:
         return ("~", float('inf'))  # put any non-matching value at the end
 
+
+# Causes an infinite loop, expected behavior > log user out of their account
+def enforce_account_enabled():
+    account_id = st.session_state.get("account_id")
+    if not account_id:
+        return  # Nothing to check
+
+    metadata = MetaData()
+    metadata.reflect(bind=engine)
+    accounts = metadata.tables.get("accounts")
+
+    if not accounts:
+        st.error("⚠️ Accounts table not found.")
+        st.stop()
+
+    with engine.connect() as conn:
+        stmt = select(accounts.c.is_enabled).where(accounts.c.account_id == account_id)
+        result = conn.execute(stmt).fetchone()
+
+        if result and result._mapping["is_enabled"] == 0:
+            st.warning("❌ Your account has been disabled. Logging you out...")
+
+            # Remove only auth/session-related info
+            for key in ["account_id", "user_name", "role"]:
+                st.session_state.pop(key, None)
+
+            cookies.clear()
+            st.stop()

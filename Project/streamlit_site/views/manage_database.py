@@ -12,20 +12,33 @@ mpl_table = metadata.tables.get("master_parts_list")
 pdf_info_table = metadata.tables.get("pdf_info")
 pdf_log_table = metadata.tables.get("pdf_log")
 pdf_section_table = metadata.tables.get("pdf_section")
+accounts_table = metadata.tables.get("accounts")
 
 # --- Check if table was found ---
-if None in (mpl_table, pdf_info_table, pdf_log_table, pdf_section_table):
+if None in (mpl_table, pdf_info_table, pdf_log_table, pdf_section_table, accounts_table):
     st.error("❌ Could not find one or more required tables.")
     st.stop()
 
 # --- Cached loader functions ---
 @st.cache_data(ttl=300)
 def load_pdf_details():
-    pdf_details_table = join(pdf_log_table, pdf_info_table, pdf_log_table.c.pdf_id == pdf_info_table.c.pdf_id)
-    query = select(pdf_log_table, pdf_info_table).select_from(pdf_details_table).where(pdf_log_table.c.is_current == 1)
+    # JOIN: pdf_log ↔ pdf_info ↔ accounts
+    pdf_details_join = (
+        pdf_log_table
+        .join(pdf_info_table, pdf_log_table.c.pdf_id == pdf_info_table.c.pdf_id)
+        .join(accounts_table, pdf_log_table.c.account_id == accounts_table.c.account_id)
+    )
+
+    query = select(
+        pdf_log_table,
+        pdf_info_table,
+        accounts_table.c.staff_name.label("staff_name")
+    ).select_from(pdf_details_join).where(pdf_log_table.c.is_current == 1)
+
     with engine.connect() as conn:
         result = conn.execute(query)
         rows = result.fetchall()
+
     return pd.DataFrame(rows, columns=result.keys())
 
 @st.cache_data(ttl=300)
@@ -124,7 +137,7 @@ if st.session_state.edit_page == False:
                     with changes_col:
                         st.markdown(f"""
                             <u><b>RECENT CHANGES:</b></u><br>
-                            <b>Staff:</b> {row['account_id']}<br>
+                            <b>Staff:</b> {row['staff_name']}<br>
                             <b>Date:</b> {date_str}<br>
                             <b>Time:</b> {time_str}<br>
                             <b>Status</b>: {status_str}
@@ -898,7 +911,6 @@ if st.session_state.edit_page:
                     session.execute(
                         update(pdf_log_table)
                         .where(pdf_log_table.c.pdf_id == pdf_id)
-                        .where(pdf_log_table.c.is_current == 1)
                         .values({
                             "is_current": 0,
                             "is_active": 0
@@ -908,7 +920,7 @@ if st.session_state.edit_page:
                     # Step 2: Insert the new log row
                     logged_changes = pd.DataFrame([{
                         "pdf_id": pdf_id,
-                        "account_id": st.session_state["user_name"],
+                        "account_id": st.session_state["account_id"],
                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "is_active": 1,
                         "is_current": 1

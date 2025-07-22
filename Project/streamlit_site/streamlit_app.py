@@ -2,6 +2,7 @@ import streamlit as st
 st.set_page_config(layout="wide")
 
 from imports import *
+enforce_account_enabled()
 
 # --- PAGE SETUP ---
 signin_page = st.Page(
