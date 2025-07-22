@@ -1,6 +1,5 @@
 '''
 bugs:
-- bike image reimport auto updates to table
 - button for upload not smooth
 '''
 
