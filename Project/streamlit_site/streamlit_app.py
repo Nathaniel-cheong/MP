@@ -30,16 +30,22 @@ acc_manage_page = st.Page(
 )
 
 dashboard_1_page = st.Page(
+    page="views/logs_dashboard.py",
+    title="Logs Dashboard",
+    icon="📊",
+)
+
+dashboard_2_page = st.Page(
     page="views/rfq_dashboard.py",
     title="RFQ Dashboard",
     icon="📊",
 )
 
-dashbaord_2_page = st.Page(
-    page="views/inventory_dashboard.py",
-    title="Inventory Dashboard",
-    icon="📊",
-)
+# Handle post-login or post-logout rerun
+if st.session_state.get("just_logged_in") or st.session_state.get("just_logged_out"):
+    st.session_state.pop("just_logged_in", None)
+    st.session_state.pop("just_logged_out", None)
+    st.rerun()
 
 # --- DEFAULT to guest if no user_type in session ---
 valid_user_types = {"guest", "staff", "admin"}
@@ -52,26 +58,43 @@ staff_pages = {
     "Staff": [pdf_import_page, pdf_manage_page],
 }
 dashboard_pages = {
-    "Dashboards": [dashboard_1_page, dashbaord_2_page],
+    "Dashboards": [dashboard_1_page],
+    #"Dashboards": [dashboard_1_page, dashboard_2_page],
 }
 admin_pages = {
     "Admin": [acc_manage_page],
 }
 
-if "user_type" not in st.session_state:
+# --- DEFAULT to guest unless valid account_id found ---
+if "account_id" not in st.session_state:
     if cookies.ready():
-        cookie_user_type = cookies.get("user_type", "").lower().strip()
-        cookie_user_name = cookies.get("user_name", "").strip()
+        cookie_id = cookies.get("account_id")
+        if cookie_id:
+            st.session_state.account_id = int(cookie_id)
 
-        if cookie_user_type in valid_user_types:
-            st.session_state.user_type = cookie_user_type
-            st.session_state.user_name = cookie_user_name
+if "account_id" in st.session_state:
+    # Fetch user info from DB
+    metadata = MetaData()
+    metadata.reflect(bind=engine)
+    accounts = metadata.tables.get("accounts")
+
+    with engine.connect() as conn:
+        stmt = select(accounts).where(accounts.c.account_id == st.session_state.account_id)
+        result = conn.execute(stmt).fetchone()
+
+        if result:
+            row = result._mapping
+            st.session_state.user_name = row["staff_name"]
+            st.session_state.user_type = row["role"]
         else:
+            # Account no longer exists, fallback to guest
+            st.session_state.clear()
             st.session_state.user_type = "guest"
             st.session_state.user_name = ""
-    else:
-        st.warning("Cookies not ready yet. Please refresh.")
-        st.stop()
+            cookies.clear()
+else:
+    st.session_state.user_type = "guest"
+    st.session_state.user_name = ""
 
 # Build allowed pages dynamically
 accessible_pages = {}
@@ -92,11 +115,12 @@ elif st.session_state.user_type == "admin":
 if st.session_state.user_type != "guest":
     with st.sidebar:
         if st.button("🔓 Log Out"):
-            cookies["user_type"] = "guest"
-            cookies["user_name"] = "guest"
+            # Ensure account_id cookie is deleted properly
+            cookies["account_id"] = ""
+            cookies.set_cookie_with_expiry("account_id", "", datetime.utcnow())  # expired
             cookies.save()
+
             st.session_state.clear()
-            st.success("Logged out.")
             st.rerun()
 
 with st.sidebar:

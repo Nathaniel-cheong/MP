@@ -14,6 +14,7 @@ from io import BytesIO
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 import time
+import bcrypt
 
 import streamlit as st
 from streamlit_cookies_manager import EncryptedCookieManager
@@ -35,7 +36,7 @@ if not cookies.ready():
     st.stop()
 
 # --- DATABASE SETUP ---
-from sqlalchemy import (create_engine, select, update, delete, distinct, text, join, \
+from sqlalchemy import (create_engine, select, update, delete, distinct, text, join, or_, \
                         Table, Column, Integer, String, MetaData, ForeignKey, LargeBinary)
 
 from sqlalchemy.orm import sessionmaker
