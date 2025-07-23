@@ -315,9 +315,9 @@ if "item_model" not in cart:
 
 
 # ─── OPTIONAL COOKIE DEBUG ─────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown("## 🔧 Cookie Debug")
-    st.write("All cookies:", dict(cookies))
+#with st.sidebar:
+    #st.markdown("## 🔧 Cookie Debug")
+    #st.write("All cookies:", dict(cookies))
 
 
 # ─── SEARCH BAR STATE (only on Sections page) ─────────────────────────────
