@@ -70,7 +70,7 @@ def get_engine():
     return engine
 
 
-@st.cache_data(ttl=10, show_spinner=False)
+@st.cache_data(ttl=30, show_spinner=False)
 def get_brands():
     with get_engine().connect() as conn:
         rows = conn.execute(
@@ -85,7 +85,7 @@ def get_brands():
     return [r[0] for r in rows]
 
 
-@st.cache_data(ttl=10, show_spinner=False)
+@st.cache_data(ttl=30, show_spinner=False)
 def get_years(brand: str, cc: str):
     with get_engine().connect() as conn:
         rows = conn.execute(
@@ -121,7 +121,7 @@ def get_cc_list(brand: str):
     return [r[0] for r in rows]
 
 
-@st.cache_data(ttl=10, show_spinner=False)
+@st.cache_data(ttl=30, show_spinner=False)
 def get_models(brand: str, cc: int):
     with get_engine().connect() as conn:
         rows = conn.execute(
