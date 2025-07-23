@@ -1,41 +1,4 @@
-def old_signin_buttons():
-    # Expiry time set to 1 day from now
-    expiry = datetime.now(timezone.utc) + timedelta(days=1)
-
-    if st.button("Staff: Tom"):
-        st.session_state.user_type = "staff"
-        st.session_state.user_name = "Tom"
-        cookies.set_cookie_with_expiry("user_type", "staff", expiry)
-        cookies.set_cookie_with_expiry("user_name", "Tom", expiry)
-        cookies.save()
-        st.success("Signed in as Staff")
-        st.rerun()
-
-    if st.button("Staff: Bob"):
-        st.session_state.user_type = "staff"
-        st.session_state.user_name = "Bob"
-        cookies.set_cookie_with_expiry("user_type", "staff", expiry)
-        cookies.set_cookie_with_expiry("user_name", "Bob", expiry)
-        cookies.save()
-        st.success("Signed in as Staff")
-        st.rerun()
-
-    if st.button("Admin: Admin"):
-        st.session_state.user_type = "admin"
-        st.session_state.user_name = "admin"
-        cookies.set_cookie_with_expiry("user_type", "admin", expiry)
-        cookies.set_cookie_with_expiry("user_name", "admin", expiry)
-        cookies.save()
-        st.success("Signed in as Admin")
-        st.rerun()
-
-    if st.session_state.user_type:
-        st.info(f"Current user type: **{st.session_state.user_type.capitalize()}**")
-
 from imports import *
-
-def hash_password(password):
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt())
 
 st.title("🔐 Staff Sign In (case-sensitive)")
 
@@ -44,15 +7,27 @@ metadata = MetaData()
 metadata.reflect(bind=engine)
 accounts = metadata.tables.get("accounts")
 
-# Input fields
-user_name_email = st.text_input("Username or Email:")
-password = st.text_input("Password:", type="password")
+def hash_password(password):
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+
+# --- Login Form ---
+with st.form("login_form"):
+    user_name_email = st.text_input("Username or Email:")
+    password = st.text_input("Password:", type="password")
+    submit = st.form_submit_button("Login")
+
+# --- Temporary error handler ---
+if st.session_state.get("login_error"):
+    st.error(st.session_state["login_error"])
+    time.sleep(2)
+    st.session_state["login_error"] = None
+    st.rerun()
 
 # --- Login Logic ---
-if st.button("Login"):
+if submit:
     if not user_name_email or not password:
-        st.warning("Please fill in both fields.")
-        st.stop()
+        st.session_state["login_error"] = "Please fill in both fields."
+        st.rerun()
 
     with engine.connect() as conn:
         stmt = select(accounts).where(
@@ -67,16 +42,19 @@ if st.button("Login"):
             row = result._mapping
             stored_hash = row["password"]
 
-            if bcrypt.checkpw(password.encode(), stored_hash.encode()):
-                # Update last_login timestamp
-                conn.execute(
-                    accounts.update()
-                    .where(accounts.c.account_id == row["account_id"])
-                    .values(last_login=datetime.utcnow().isoformat())
-                )
-                conn.commit()
+            # Check if account is enabled
+            if row.get("is_enabled") == 0:
+                st.session_state["login_error"] = "❌ This account has been disabled."
+                st.rerun()
 
-                # Store only account_id in session and cookie
+            if bcrypt.checkpw(password.encode(), stored_hash.encode()):
+                with engine.begin() as trans_conn:
+                    trans_conn.execute(
+                        accounts.update()
+                        .where(accounts.c.account_id == row["account_id"])
+                        .values(last_login=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                    )
+
                 st.session_state.account_id = row["account_id"]
                 cookies["account_id"] = str(row["account_id"])
                 cookies.save()
@@ -86,28 +64,8 @@ if st.button("Login"):
                 time.sleep(1)
                 st.rerun()
             else:
-                st.error("❌ Incorrect password.")
+                st.session_state["login_error"] = "❌ Incorrect password."
+                st.rerun()
         else:
-            st.error("❌ Account not found.")
-
-# --- Optional Quick Login Buttons (for testing only) ---
-st.divider()
-st.caption("Quick login (for testing only)")
-
-if st.button("Tom (Staff)"):
-    st.session_state.account_id = 1  # Adjust to match real account_id
-    cookies["account_id"] = "1"
-    cookies.save()
-    st.rerun()
-
-if st.button("Bob (Staff)"):
-    st.session_state.account_id = 2
-    cookies["account_id"] = "2"
-    cookies.save()
-    st.rerun()
-
-if st.button("Admin"):
-    st.session_state.account_id = 3
-    cookies["account_id"] = "3"
-    cookies.save()
-    st.rerun()
+            st.session_state["login_error"] = "❌ Account not found."
+            st.rerun()

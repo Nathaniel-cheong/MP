@@ -36,8 +36,8 @@ dashboard_1_page = st.Page(
 )
 
 dashboard_2_page = st.Page(
-    page="views/rfq_dashboard.py",
-    title="RFQ Dashboard",
+    page="views/inventory_dashboard.py",
+    title="inventory Dashboard",
     icon="📊",
 )
 
@@ -55,14 +55,13 @@ guest_pages = {
     "User": [signin_page],
 }
 staff_pages = {
-    "Staff": [pdf_import_page, pdf_manage_page],
+    "Bike Management": [pdf_import_page, pdf_manage_page],
 }
 dashboard_pages = {
-    "Dashboards": [dashboard_1_page],
-    #"Dashboards": [dashboard_1_page, dashboard_2_page],
+    "Dashboards": [dashboard_2_page],
 }
 admin_pages = {
-    "Admin": [acc_manage_page],
+    "Admin": [acc_manage_page, dashboard_1_page],
 }
 
 # --- DEFAULT to guest unless valid account_id found ---
@@ -103,12 +102,12 @@ if st.session_state.user_type == "guest":
     accessible_pages.update(guest_pages)
 
 elif st.session_state.user_type == "staff":
-    accessible_pages.update(staff_pages)
     accessible_pages.update(dashboard_pages)
+    accessible_pages.update(staff_pages)
 
 elif st.session_state.user_type == "admin":
-    accessible_pages.update(staff_pages)
     accessible_pages.update(dashboard_pages)
+    accessible_pages.update(staff_pages)
     accessible_pages.update(admin_pages)
 
 # --- Log Out for authenticated users ---
@@ -123,9 +122,9 @@ if st.session_state.user_type != "guest":
             st.session_state.clear()
             st.rerun()
 
-with st.sidebar:
-    st.markdown("### Current Session State")
-    st.json(st.session_state)
+# with st.sidebar:
+#     st.markdown("### Current Session State")
+#     st.json(st.session_state)
 
 # --- Run navigation ---
 pg = st.navigation(accessible_pages)
