@@ -90,27 +90,6 @@ if st.session_state.account_edit_mode == False:
                             st.session_state.account_edit_mode = True
                             st.rerun()
 
-                        # Reset Password
-                        if st.button("🔁 Reset Password", key=f"reset_btn_{account_key}"):
-                            st.session_state[f"show_reset_input_{account_key}"] = True
-
-                        if st.session_state.get(f"show_reset_input_{account_key}", False):
-                            new_pw = st.text_input(f"Enter new password for {row['staff_name']}:", key=f"pw_input_{account_key}")
-                            if st.button("✅ Confirm Reset", key=f"confirm_reset_{account_key}"):
-                                if new_pw:
-                                    hashed_pw = bcrypt.hashpw(new_pw.encode(), bcrypt.gensalt()).decode()
-                                    with engine.begin() as conn:
-                                        conn.execute(
-                                            accounts.update()
-                                            .where(accounts.c.account_id == row["account_id"])
-                                            .values(password=hashed_pw)
-                                        )
-                                    st.success(f"Password updated for {row['staff_name']}")
-                                    del st.session_state[f"show_reset_input_{account_key}"]
-                                    st.rerun()
-                                else:
-                                    st.warning("Password cannot be empty.")
-
                         # Delete with confirmation
                         delete_key = f"delete_{account_key}"
                         confirm_key = f"confirm_delete_{account_key}"

@@ -1,4 +1,7 @@
 from imports import *
+import streamlit as st
+import pandas as pd
+import time
 
 st.title("📊 Logs Dashboard")
 
@@ -28,32 +31,29 @@ with st.sidebar:
     if selected_staff != "All":
         df = df[df["staff_name"] == selected_staff]
 
-        # --- Refresh Cache ---
     if st.button("🔄 Refresh Data"):
         st.cache_data.clear()
         st.success("Cache cleared. Reloading...")
         time.sleep(1)
         st.rerun()
 
-# --- Dashboard Columns ---
-col1, col2, col3 = st.columns([1.5, 3, 2])
-
-# --- Column 1: Metrics ---
-with col1:
-    st.subheader("📌 Quick Stats")
-    st.metric("Total Logs", len(df))
-    st.metric("Unique Staff", df["staff_name"].nunique())
-    st.metric("Active Entries", df["is_current"].sum())
-
-    st.subheader("🕒 Most Active Hour")
+# --- Metrics Row ---
+with st.container():
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("📦 Total PDFs", df["pdf_id"].nunique())
+    metric_cols[1].metric("✅ Active PDFs", df[df["is_active"] == 1]["pdf_id"].nunique())
+    metric_cols[2].metric("👥 Unique Staff", df["staff_name"].nunique())
     if not df.empty:
         peak_hour = df["hour"].value_counts().idxmax()
-        st.metric("Hour", f"{peak_hour}:00")
+        metric_cols[3].metric("🕒 Most Active Hour", f"{peak_hour}:00")
     else:
-        st.write("No data available.")
+        metric_cols[3].write("No data")
 
-# --- Column 2: Daily Activity ---
-with col2:
+# --- Main Charts and Tables ---
+chart_col, side_col = st.columns([3, 2])
+
+# --- Column 1: Chart ---
+with chart_col:
     st.subheader("📅 Log Activity per Day")
     if not df.empty:
         daily_logs = df["date"].value_counts().sort_index()
@@ -61,8 +61,8 @@ with col2:
     else:
         st.write("No activity to show.")
 
-# --- Column 3: Top PDFs and Recent ---
-with col3:
+# --- Column 2: Top PDFs and Recent Logs ---
+with side_col:
     st.subheader("📄 Top 5 Most Edited PDF IDs")
     if not df.empty:
         top_pdfs = df["pdf_id"].value_counts().head(5).reset_index()
@@ -72,5 +72,5 @@ with col3:
         st.write("No recent edits.")
 
     st.subheader("🧾 Recent Activity")
-    recent = df.sort_values("timestamp", ascending=False).head(5)[["pdf_id", "staff_name", "timestamp"]]
+    recent = df.sort_values("timestamp", ascending=False).head(5)[["pdf_id", "staff_name"]]
     st.dataframe(recent, hide_index=True, use_container_width=True)
