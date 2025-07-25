@@ -514,20 +514,28 @@ elif curr == 4:
             sel = st.session_state.current_ref
             st.markdown(f"**Parts for Reference {sel}**")
             
-            # ─── fetch & dedupe ─────────────────────────────────────────────
+            # ─── fetch & dedupe (scoped to brand & model) ───────────────────────
             with get_engine().connect() as conn2:
                 raw_rows = conn2.execute(
                     text("""
                         SELECT mpl.part_no, mpl.description
                         FROM master_parts_list mpl
-                        JOIN pdf_section      ps ON mpl.section_id = ps.section_id
-                        WHERE ps.section_name = :sn
-                        AND mpl.ref_no      = :rn
+                        JOIN pdf_section ps ON mpl.section_id = ps.section_id
+                        JOIN pdf_info    pi ON ps.pdf_id      = pi.pdf_id
+                        WHERE mpl.section_id = :sid
+                        AND mpl.ref_no     = :rn
+                        AND pi.brand       = :b
+                        AND pi.model       = :m
                         ORDER BY mpl.part_no
                     """),
-                    {"sn": sect, "rn": sel},
+                    {
+                    "sid": st.session_state.current_section_id,
+                    "rn":  sel,
+                    "b":   st.session_state.current_brand,
+                    "m":   st.session_state.current_model,
+                    },
                 ).fetchall()
-
+                
             seen = set()
             unique_parts = []
             for part_no, desc in raw_rows:
@@ -601,18 +609,26 @@ elif curr == 4:
                 sel = st.session_state.current_ref
                 st.markdown(f"**Parts for Reference {sel}**")
 
-                # ─── fetch & dedupe ─────────────────────────────────────────
+                # ─── fetch & dedupe (scoped to brand & model) ───────────────────────
                 with get_engine().connect() as conn2:
                     raw_rows = conn2.execute(
                         text("""
                             SELECT mpl.part_no, mpl.description
                             FROM master_parts_list mpl
-                            JOIN pdf_section      ps ON mpl.section_id = ps.section_id
-                            WHERE ps.section_name = :sn
-                            AND mpl.ref_no      = :rn
+                            JOIN pdf_section ps ON mpl.section_id = ps.section_id
+                            JOIN pdf_info    pi ON ps.pdf_id      = pi.pdf_id
+                            WHERE mpl.section_id = :sid
+                            AND mpl.ref_no     = :rn
+                            AND pi.brand       = :b
+                            AND pi.model       = :m
                             ORDER BY mpl.part_no
                         """),
-                        {"sn": sect, "rn": sel},
+                        {
+                        "sid": st.session_state.current_section_id,
+                        "rn":  sel,
+                        "b":   st.session_state.current_brand,
+                        "m":   st.session_state.current_model,
+                        },
                     ).fetchall()
 
                 seen = set()

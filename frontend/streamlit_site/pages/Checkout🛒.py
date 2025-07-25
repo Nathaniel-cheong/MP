@@ -115,7 +115,7 @@ if is_qr_view:
 
     _, _, _, _, purchase_type, customer_name, contact, email, postal_code, address = rows[0]
 
-    st.markdown("# 🧾 Receipt")
+    st.markdown("# 🧾 Order Details")
     st.write(f"**Basket ID:** {bid}")
     st.write(f"**Purchase Type:** {purchase_type}")
     st.write(f"**Name:** {customer_name}")
@@ -138,7 +138,7 @@ if is_qr_view:
     df = pd.DataFrame(data)
     st.table(df)
 
-    st.markdown("### Thank you for your purchase!")
+    st.markdown("### Thank you for ordering!")
     st.stop()
 
 
