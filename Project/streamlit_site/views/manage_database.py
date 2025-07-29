@@ -172,21 +172,43 @@ if st.session_state.edit_page == False:
                     if st.button("❌ Delete", key=delete_key):
                         st.session_state[confirm_key] = True
 
+                    # --- Step 1: Delete all logs for the selected PDF ---
                     if st.session_state.get(confirm_key, False):
                         st.warning(f"Are you sure you want to delete PDF ID {row['pdf_id']}?")
 
                         if st.button("✅ Confirm Delete", key=confirm_button_key):
-                            with engine.begin() as conn:
-                                stmt = delete(pdf_log_table).where(pdf_log_table.c.pdf_id == row['pdf_id'])
-                                conn.execute(stmt)
-                            st.cache_data.clear()
-                            st.success(f"Deleted PDF ID {row['pdf_id']}")
-                            st.session_state[confirm_key] = False
-                            st.rerun()
+                            try:
+                                with engine.begin() as conn:
+                                    # --- Delete all existing logs related to this pdf_id ---
+                                    delete_stmt = delete(pdf_log_table).where(pdf_log_table.c.pdf_id == row["pdf_id"])
+                                    conn.execute(delete_stmt)
 
+                                    # --- Insert a new log entry with is_active = 0 and is_current = 0 ---
+                                    new_log_entry = pd.DataFrame([{
+                                        "pdf_id": row["pdf_id"],
+                                        "account_id": st.session_state["account_id"],  # Who deleted it
+                                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                        "is_active": 0,  # Marking the PDF as inactive
+                                        "is_current": 0  # Marking this log entry as not current
+                                    }])
+                                    
+                                    # Insert the new log into the pdf_log table
+                                    new_log_entry.to_sql("pdf_log", con=conn, if_exists="append", index=False)
+
+                                st.success(f"PDF ID {row['pdf_id']} deleted.")
+                                st.session_state[confirm_key] = False
+                                st.rerun()
+
+                            except Exception as e:
+                                st.error(f"❌ Failed to delete PDF: {e}")
+                                st.session_state[confirm_key] = False
+                                st.rerun()
+
+                        # Cancel delete action
                         if st.button("❌ Cancel", key=cancel_button_key):
                             st.session_state[confirm_key] = False
                             st.rerun()
+                            
                 st.divider()
     else:
         st.info("Unable to join tables. Please check your table.")
