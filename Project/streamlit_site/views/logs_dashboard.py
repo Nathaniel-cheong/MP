@@ -72,5 +72,6 @@ with side_col:
         st.write("No recent edits.")
 
     st.subheader("🧾 Recent Activity")
-    recent = df.sort_values("timestamp", ascending=False).head(5)[["pdf_id", "staff_name"]]
+    #
+    recent = df.sort_values("timestamp", ascending=False).head(5)[["pdf_id", "staff_name", "timestamp"]]
     st.dataframe(recent, hide_index=True, use_container_width=True)

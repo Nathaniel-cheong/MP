@@ -41,6 +41,12 @@ dashboard_2_page = st.Page(
     icon="📊",
 )
 
+pdf_dusbin_page = st.Page(
+    page="views/pdf_dustbin.py",
+    title="PDF Dusbin",
+    icon="🗑️",
+)
+
 # Handle post-login or post-logout rerun
 if st.session_state.get("just_logged_in") or st.session_state.get("just_logged_out"):
     st.session_state.pop("just_logged_in", None)
@@ -55,7 +61,7 @@ guest_pages = {
     "User": [signin_page],
 }
 staff_pages = {
-    "Bike Management": [pdf_import_page, pdf_manage_page],
+    "Bike Management": [pdf_import_page, pdf_manage_page, pdf_dusbin_page],
 }
 dashboard_pages = {
     "Dashboards": [dashboard_2_page],
@@ -122,9 +128,9 @@ if st.session_state.user_type != "guest":
             st.session_state.clear()
             st.rerun()
 
-# with st.sidebar:
-#     st.markdown("### Current Session State")
-#     st.json(st.session_state)
+with st.sidebar:
+    st.markdown("### Current Session State")
+    st.json(st.session_state)
 
 # --- Run navigation ---
 pg = st.navigation(accessible_pages)

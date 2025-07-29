@@ -1,5 +1,4 @@
 from imports import *
-import bcrypt
 
 st.title("👥 Manage Accounts")
 
@@ -39,14 +38,11 @@ if st.session_state.account_edit_mode == False:
         if st.button("➕ Add Account"):
             st.session_state.account_edit_mode = True
             st.session_state.edit_account_id = None
-            st.rerun()
-
+            st.rerun()  # Will redirect to Add Account page
 
     if search_query:
         query = search_query.strip().lower()
-        accounts_df = accounts_df[
-            accounts_df["staff_name"].astype(str).str.lower().str.contains(query)
-        ]
+        accounts_df = accounts_df[accounts_df["staff_name"].astype(str).str.lower().str.contains(query)]
 
     # Sort and prepare rows
     accounts_df = accounts_df.sort_values("account_id")
@@ -84,11 +80,26 @@ if st.session_state.account_edit_mode == False:
                             st.success(f"Account {'deactivated' if new_status == 0 else 'activated'}")
                             st.rerun()
 
-                        # Edit
-                        if st.button("✏️ Edit", key=f"edit_{account_key}"):
-                            st.session_state.edit_account_id = row["account_id"]
-                            st.session_state.account_edit_mode = True
-                            st.rerun()
+                        # Reset Password
+                        if st.button("🔁 Reset Password", key=f"reset_btn_{account_key}"):
+                            st.session_state[f"show_reset_input_{account_key}"] = True
+
+                        if st.session_state.get(f"show_reset_input_{account_key}", False):
+                            new_pw = st.text_input(f"Enter new password for {row['staff_name']}:", key=f"pw_input_{account_key}")
+                            if st.button("✅ Confirm Reset", key=f"confirm_reset_{account_key}"):
+                                if new_pw:
+                                    hashed_pw = bcrypt.hashpw(new_pw.encode(), bcrypt.gensalt()).decode()
+                                    with engine.begin() as conn:
+                                        conn.execute(
+                                            accounts.update()
+                                            .where(accounts.c.account_id == row["account_id"])
+                                            .values(password=hashed_pw)
+                                        )
+                                    st.success(f"Password updated for {row['staff_name']}")
+                                    del st.session_state[f"show_reset_input_{account_key}"]
+                                    st.rerun()
+                                else:
+                                    st.warning("Password cannot be empty.")
 
                         # Delete with confirmation
                         delete_key = f"delete_{account_key}"
@@ -115,13 +126,40 @@ if st.session_state.account_edit_mode == False:
 
 # --- Edit Mode ---
 if st.session_state.account_edit_mode == True:
-    st.header("✏️ Edit Account Details")
-    st.write(f"Editing account ID: `{st.session_state.edit_account_id}`")
-
+    st.header("✏️ Add Account Details")
+    
     # Back button
     if st.button("🔙 Back to Accounts"):
         st.session_state.account_edit_mode = False
         st.session_state.edit_account_id = None
         st.rerun()
 
-    # You can expand this section to add editable fields and update logic as needed
+    # Here you can add fields for creating or editing an account
+    with st.form("add_account_form"):
+        staff_name = st.text_input("Staff Name")
+        email = st.text_input("Email")
+        role = st.selectbox("Role", ["staff", "admin"])
+        is_enabled = 1
+        password = st.text_input("Password", type="password")
+        confirm_password = st.text_input("Confirm Password", type="password")
+
+        if st.form_submit_button("Add Account"):
+            if password != confirm_password:
+                st.error("Passwords do not match.")
+            else:
+                hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+                with engine.begin() as conn:
+                    conn.execute(
+                        accounts.insert().values(
+                            staff_name=staff_name,
+                            email=email,
+                            role=role,
+                            is_enabled=1 if is_enabled else 0,
+                            password=hashed_pw,
+                            created_at=datetime.now(),
+                            last_login=datetime.now()
+                        )
+                    )
+                st.success("Account successfully added!")
+                st.session_state.account_edit_mode = False
+                st.rerun()
