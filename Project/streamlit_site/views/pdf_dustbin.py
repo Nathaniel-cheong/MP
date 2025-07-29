@@ -18,9 +18,8 @@ if None in (pdf_log_table, pdf_info_table, accounts_table):
     st.stop()
 
 # --- Cached loader functions ---
-@st.cache_data(ttl=300)
 def load_archived_pdfs():
-    # First, find PDFs that are in the "dustbin" (is_active=0 and is_current=0)
+    # First, find PDFs that are in the "dustbin" (is_active=0, is_current=0, archived=1)
     archived_pdfs_join = (
         pdf_log_table
         .join(pdf_info_table, pdf_log_table.c.pdf_id == pdf_info_table.c.pdf_id)
@@ -32,7 +31,9 @@ def load_archived_pdfs():
         pdf_info_table,
         accounts_table.c.staff_name.label("staff_name")
     ).select_from(archived_pdfs_join).where(
-        pdf_log_table.c.is_active == 0, pdf_log_table.c.is_current == 0
+        pdf_log_table.c.is_active == 0, 
+        pdf_log_table.c.is_current == 0,
+        pdf_log_table.c.archived == 1  # Only get archived PDFs
     )
 
     with engine.connect() as conn:
@@ -49,10 +50,10 @@ if archived_pdfs_df.empty:
     st.info("No archived PDFs found.")
     st.stop()
 
-# Display archived PDFs with delete buttons
+# Display archived PDFs with delete and restore buttons
 for index, row in archived_pdfs_df.iterrows():
     with st.container():
-        image_col, pdf_details_col, delete_button_col = st.columns([1, 2, 1])
+        image_col, pdf_details_col, action_button_col = st.columns([1, 2, 1])
 
         with image_col:
             if row["bike_image"]:
@@ -94,15 +95,17 @@ for index, row in archived_pdfs_df.iterrows():
                     <b>Status:</b> {status_str}
                 """, unsafe_allow_html=True)
 
-        with delete_button_col:
-            # Add a unique key by using the index for each delete button
+        with action_button_col:
+            # Add a unique key by using the index for each button
             delete_key = f"delete_{row['pdf_id']}_{index}"
             confirm_key = f"confirm_delete_{row['pdf_id']}_{index}"
             confirm_button_key = f"confirm_button_{row['pdf_id']}_{index}"
             cancel_button_key = f"cancel_button_{row['pdf_id']}_{index}"
 
-            # Now use the unique key for the button
-            if st.button("🗑️ Delete", key=delete_key):
+            restore_key = f"restore_{row['pdf_id']}_{index}"
+
+            # Delete Button
+            if st.button("❌ Delete", key=delete_key):
                 st.session_state[confirm_key] = True
 
             if st.session_state.get(confirm_key, False):
@@ -124,5 +127,18 @@ for index, row in archived_pdfs_df.iterrows():
                     st.session_state[confirm_key] = False
                     st.rerun()
 
-        st.divider()
+            # Restore Button (same column as Delete)
+            if st.button("🔄 Restore", key=restore_key):
+                with engine.begin() as conn:
+                    # Update the log to restore the PDF (set archived=0, is_active=1, is_current=1)
+                    update_stmt = update(pdf_log_table).where(pdf_log_table.c.pdf_id == row['pdf_id']).values(
+                        archived=0,
+                        is_active=1,
+                        is_current=1
+                    )
+                    conn.execute(update_stmt)
 
+                st.success(f"PDF ID {row['pdf_id']} restored.")
+                st.rerun()
+
+        st.divider()

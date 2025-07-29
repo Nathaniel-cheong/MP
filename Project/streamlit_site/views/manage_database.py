@@ -56,6 +56,16 @@ def load_pdf_section_table():
     with engine.connect() as conn:
         return pd.read_sql_table("pdf_section", con=conn)
 
+@st.cache_data(ttl=300)
+def load_master_table():
+    with engine.connect() as conn:
+        return pd.read_sql_table("master_table", con=conn)
+
+@st.cache_data(ttl=300)
+def load_master_parts_data_table():
+    with engine.connect() as conn:
+        return pd.read_sql_table("master_parts_data_table", con=conn)
+
 if st.session_state.edit_page == False:
     pdf_details_df = load_pdf_details()
 
@@ -189,11 +199,13 @@ if st.session_state.edit_page == False:
                                         "account_id": st.session_state["account_id"],  # Who deleted it
                                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                         "is_active": 0,  # Marking the PDF as inactive
-                                        "is_current": 0  # Marking this log entry as not current
+                                        "is_current": 0,  # Marking this log entry as not current
+                                        "archived": 1
                                     }])
                                     
                                     # Insert the new log into the pdf_log table
                                     new_log_entry.to_sql("pdf_log", con=conn, if_exists="append", index=False)
+                                    st.cache_data.clear()
 
                                 st.success(f"PDF ID {row['pdf_id']} deleted.")
                                 st.session_state[confirm_key] = False
@@ -449,6 +461,7 @@ if st.session_state.edit_page:
             st.warning("Please do not touch the **mpl_id** column when editing")
             mpl_df = pd.read_sql_table("master_parts_list", con=conn)
             edit_mpl_df = mpl_df[mpl_df["pdf_id"] == pdf_id].sort_values("mpl_id")
+            
 
             if edit_mpl_df.empty:
                 st.warning("No entries found for this PDF ID.")
@@ -945,7 +958,8 @@ if st.session_state.edit_page:
                         "account_id": st.session_state["account_id"],
                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "is_active": 1,
-                        "is_current": 1
+                        "is_current": 1,
+                        "archived": 0
                     }])
 
                     logged_changes.to_sql("pdf_log", con=session.connection(), if_exists="append", index=False)

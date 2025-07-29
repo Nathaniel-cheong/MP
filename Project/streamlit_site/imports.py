@@ -116,7 +116,8 @@ class PDFProcessor:
             "account_id": account_id,
             "timestamp": datetime.now().isoformat(),
             "is_active": 0,
-            "is_current": 1
+            "is_current": 1,
+            "archived": 0
         }])
 
     @staticmethod
