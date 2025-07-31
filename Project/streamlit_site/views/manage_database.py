@@ -14,6 +14,7 @@ pdf_log_table = metadata.tables.get("pdf_log")
 pdf_section_table = metadata.tables.get("pdf_section")
 accounts_table = metadata.tables.get("accounts")
 
+
 # --- Check if table was found ---
 if None in (mpl_table, pdf_info_table, pdf_log_table, pdf_section_table, accounts_table):
     st.error("❌ Could not find one or more required tables.")
@@ -55,6 +56,16 @@ def load_mpl_table():
 def load_pdf_section_table():
     with engine.connect() as conn:
         return pd.read_sql_table("pdf_section", con=conn)
+
+@st.cache_data(ttl=300)
+def load_master_table():
+    with engine.connect() as conn:
+        return pd.read_sql_table("master_table", con=conn)
+
+@st.cache_data(ttl=300)
+def load_master_parts_data_table():
+    with engine.connect() as conn:
+        return pd.read_sql_table("master_parts_data_table", con=conn)
 
 if st.session_state.edit_page == False:
     pdf_details_df = load_pdf_details()
@@ -189,11 +200,13 @@ if st.session_state.edit_page == False:
                                         "account_id": st.session_state["account_id"],  # Who deleted it
                                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                         "is_active": 0,  # Marking the PDF as inactive
-                                        "is_current": 0  # Marking this log entry as not current
+                                        "is_current": 0,  # Marking this log entry as not current
+                                        "archived": 1
                                     }])
                                     
                                     # Insert the new log into the pdf_log table
                                     new_log_entry.to_sql("pdf_log", con=conn, if_exists="append", index=False)
+                                    st.cache_data.clear()
 
                                 st.success(f"PDF ID {row['pdf_id']} deleted.")
                                 st.session_state[confirm_key] = False
@@ -443,12 +456,30 @@ if st.session_state.edit_page:
                 except Exception as e:
                     st.error(f"❌ Failed to update the database: {e}")
 
-        # Edit MPL page
         elif st.session_state.edit_page_mpl_list:
             st.subheader("Edit: master_parts_list")
             st.warning("Please do not touch the **mpl_id** column when editing")
+
+            # Load master_parts_list filtered by pdf_id
             mpl_df = pd.read_sql_table("master_parts_list", con=conn)
             edit_mpl_df = mpl_df[mpl_df["pdf_id"] == pdf_id].sort_values("mpl_id")
+
+            # Load and cache pdf_section
+            if "sections_df" not in st.session_state:
+                sections_df = pd.read_sql_table("pdf_section", con=conn, columns=["section_id", "section_no", "pdf_id"])
+                st.session_state["sections_df"] = sections_df
+            else:
+                sections_df = st.session_state["sections_df"]
+
+            # Filter sections by pdf_id
+            sections_df = sections_df[sections_df["pdf_id"] == pdf_id]
+
+            # Merge to get section_no into edit_mpl_df
+            edit_mpl_df = edit_mpl_df.merge(
+                sections_df[["section_id", "section_no"]],
+                on="section_id",
+                how="left"
+            )
 
             if edit_mpl_df.empty:
                 st.warning("No entries found for this PDF ID.")
@@ -462,22 +493,37 @@ if st.session_state.edit_page:
                 st.session_state.setdefault("mpl_reimport_temp_df", None)
 
                 # --- Section Number Filter ---
-                df_for_filter = st.session_state["mpl_df"].copy()
+                # Ensure types are correct
+                sections_df["section_no"] = sections_df["section_no"].astype(str)
+                sections_df["section_name"] = sections_df["section_name"].fillna("").astype(str)
 
-                # Extract section number from section_id (e.g., A_B_C_3 → 3)
-                df_for_filter["section_no"] = df_for_filter["section_id"].str.extract(r"_(\d+)$")
-                df_for_filter["section_no"] = pd.to_numeric(df_for_filter["section_no"], errors="coerce")
+                # Build label column
+                sections_df["section_label"] = sections_df.apply(
+                    lambda row: f"{row['section_no']} ({row['section_name']})", axis=1
+                )
 
-                section_numbers = sorted(df_for_filter["section_no"].dropna().unique().astype(int))
-                selected_section = st.selectbox("Filter by Section Number", ["All"] + [str(num) for num in section_numbers])
+                # Sort by section_no numerically and alphabetically
+                sections_df["sort_key"] = sections_df["section_no"].apply(filter_sorting)
+                sections_df = sections_df.sort_values("sort_key")
 
-                # Apply filter (this affects display only, not session storage)
+                # --- Dropdown display + filter mapping ---
+                section_options = ["All"] + sections_df["section_label"].tolist()
+                section_no_map = dict(zip(sections_df["section_label"], sections_df["section_no"]))
+
+                # --- Dropdown UI ---
+                selected_section = st.selectbox("Filter by Section", section_options)
+
+                # --- Filtering ---
                 if selected_section != "All":
-                    df_for_filter = df_for_filter[df_for_filter["section_no"] == int(selected_section)]
+                    section_no = section_no_map[selected_section]
+                    edit_mpl_df = edit_mpl_df[edit_mpl_df["section_no"].astype(str) == section_no]
 
-                # Show filtered DataFrame
-                st.dataframe(df_for_filter.drop(columns=["section_no"]), use_container_width=True, hide_index=True)
-
+                # Drop section_no from the final DataFrame (for display, edit, download)
+                edit_mpl_df = edit_mpl_df.drop(columns=["section_no"], errors="ignore") 
+                
+                # Display the filtered DataFrame
+                st.dataframe(edit_mpl_df, use_container_width=True, hide_index=True)
+                        
                 # --- Download Excel ---
                 buffer = io.BytesIO()
                 st.session_state["mpl_df"].to_excel(buffer, index=False)
@@ -945,7 +991,8 @@ if st.session_state.edit_page:
                         "account_id": st.session_state["account_id"],
                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "is_active": 1,
-                        "is_current": 1
+                        "is_current": 1,
+                        "archived": 0
                     }])
 
                     logged_changes.to_sql("pdf_log", con=session.connection(), if_exists="append", index=False)
