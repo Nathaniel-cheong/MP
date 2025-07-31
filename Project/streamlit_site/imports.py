@@ -842,3 +842,43 @@ def section_sort_key(val):
     else:
         return ("~", float('inf'))  # put any non-matching value at the end
 
+def custom_sort_key(value):
+    # Extract letters and numbers from the string
+    parts = re.split('[-]', value)  # Split by hyphen to handle cases like "F-10-10"
+    
+    # Create a list where each part is either a string (letters) or an integer (numbers)
+    parsed_parts = []
+    for part in parts:
+        if part.isdigit():
+            parsed_parts.append(int(part))  # Convert to integer if it's a number
+        else:
+            parsed_parts.append(part)  # Keep as string if it's a letter
+    
+    return parsed_parts
+
+import re
+
+def filter_sorting(s):
+    """
+    Sort key that handles:
+    - Yamaha sections: '1', '10', '10-1'
+    - Honda sections: 'E-1', 'E-1-1', 'F-2', 'EOP-2'
+    """
+
+    s = str(s).strip()
+
+    # Case 1: Yamaha-style — all numeric, with optional hyphen
+    if re.match(r'^\d+(-\d+)?$', s):
+        parts = [int(p) for p in s.split('-')]
+        return ('', *parts, 0) if len(parts) == 2 else ('', parts[0], 0, 0)
+
+    # Case 2: Honda-style — alphabetic prefix, number, optional subnumber
+    match = re.match(r'^([A-Z]+)-(\d+)(?:-(\d+))?$', s)
+    if match:
+        prefix = match.group(1)
+        main = int(match.group(2))
+        sub = int(match.group(3)) if match.group(3) else 0
+        return (prefix, main, sub, 0)
+
+    # Fallback: unrecognized — push to bottom
+    return ('ZZZ', float('inf'), float('inf'), float('inf'))
