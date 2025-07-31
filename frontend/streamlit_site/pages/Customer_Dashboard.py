@@ -202,92 +202,75 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ─── GRAPHS ────────────────────────────────────────────────────────────────
+col1, col2 = st.columns([2, 1])
 
-st.subheader("🏆 Part Popularity (Top 10)")
-chart_df = (
-    qty_by_part
-      .sort_values(ascending=False)
-      .head(10)
-      .rename_axis("part_no")
-      .reset_index(name="total_qty")
-)
-bar = (
-    alt.Chart(chart_df)
-       .mark_bar()
-       .encode(
-           x=alt.X("total_qty:Q", title="Total Quantity", axis=alt.Axis(format="d", tickMinStep=1)),
-           y=alt.Y("part_no:N", sort="-x", title="Part No."),
-           color=alt.Color("part_no:N", legend=None, scale=alt.Scale(scheme="set3"))
-       )
-       .properties(height=300)
-)
-st.altair_chart(bar, use_container_width=True)
+with col1:
+    st.subheader("🗓️ Orders Over Time")
+    agg_choice = st.selectbox("Aggregate by", ["Day", "Month"], index=0)
+    if agg_choice == "Day":
+        orders_by_time = (
+            filtered
+              .drop_duplicates(subset=["Basket ID", "Order Date Only"])
+              .groupby("Order Date Only")["Basket ID"]
+              .nunique()
+              .reset_index(name="orders")
+        )
+        x_enc = alt.X("Order Date Only:T", timeUnit="yearmonthdate", title="Date")
+    else:
+        orders_by_time = (
+            filtered
+              .drop_duplicates(subset=["Basket ID", "Order Date Only"])
+              .assign(order_month=filtered["Order Date"].dt.to_period("M").dt.to_timestamp())
+              .groupby("order_month")["Basket ID"]
+              .nunique()
+              .reset_index(name="orders")
+        )
+        orders_by_time.rename(columns={"order_month": "Month"}, inplace=True)
+        x_enc = alt.X("Month:T", timeUnit="yearmonth", title="Month")
 
-
-st.subheader("📊 Number of Orders by Brand")
-orders_by_brand = (
-    filtered
-      .drop_duplicates(subset=["Basket ID", "Brand"])
-      .groupby("Brand")["Basket ID"]
-      .nunique()
-      .reset_index(name="order_count")
-)
-bar3 = (
-    alt.Chart(orders_by_brand)
-       .mark_bar()
-       .encode(
-           x=alt.X("order_count:Q", title="Number of Orders", axis=alt.Axis(format="d", tickMinStep=1)),
-           y=alt.Y("Brand:N", sort="-x", title="Brand"),
-           color=alt.Color("Brand:N", legend=None, scale=alt.Scale(scheme="set3"))
-       )
-       .properties(height=300)
-)
-st.altair_chart(bar3, use_container_width=True)
-
-
-# ─── ORDERS OVER TIME WITH CHOICE ───────────────────────────────────────────
-st.subheader("🗓️ Orders Over Time")
-agg_choice = st.selectbox("Aggregate by", ["Day", "Month"], index=0)
-
-if agg_choice == "Day":
-    orders_by_time = (
-        filtered
-          .drop_duplicates(subset=["Basket ID", "Order Date Only"])
-          .groupby("Order Date Only")["Basket ID"]
-          .nunique()
-          .reset_index(name="orders")
+    line = (
+        alt.Chart(orders_by_time)
+           .mark_line(point=True)
+           .encode(
+               x=x_enc,
+               y=alt.Y("orders:Q", title="Number of Orders", axis=alt.Axis(format="d", tickMinStep=1))
+           )
+           .properties(height=300)
     )
-    x_enc = alt.X("Order Date Only:T", timeUnit="yearmonthdate", title="Date")
-else:
-    # derive a period timestamp column for month
-    orders_by_time = (
+    st.altair_chart(line, use_container_width=True)
+
+    # ─── PURCHASE HISTORY UNDER THE CHART ────────────────────────────────────
+    st.subheader("📜 Purchase History")
+    st.dataframe(
         filtered
-          .drop_duplicates(subset=["Basket ID", "Order Date Only"])
-          .assign(order_month=filtered["Order Date"].dt.to_period("M").dt.to_timestamp())
-          .groupby("order_month")["Basket ID"]
-          .nunique()
-          .reset_index(name="orders")
+          .sort_values(["Order Date", "Basket ID"], ascending=False)
+          .reset_index(drop=True),
+        use_container_width=True
     )
-    orders_by_time.rename(columns={"order_month": "Month"}, inplace=True)
-    x_enc = alt.X("Month:T", timeUnit="yearmonth", title="Month")
 
-line = (
-    alt.Chart(orders_by_time)
-       .mark_line(point=True)
-       .encode(
-           x=x_enc,
-           y=alt.Y("orders:Q", title="Number of Orders", axis=alt.Axis(format="d", tickMinStep=1))
-       )
-       .properties(height=300)
-)
+with col2:
+    st.subheader("🏆 Part Popularity (Top 10)")
+    chart_df = (
+        qty_by_part
+          .sort_values(ascending=False)
+          .head(10)
+          .rename_axis("Part No.")
+          .reset_index(name="Total Quantity")
+    )
+    st.dataframe(
+        chart_df.style.format({"Total Quantity": "{:d}"}),
+        use_container_width=True
+    )
 
-st.altair_chart(line, use_container_width=True)
-
-st.markdown("---")
-
-st.subheader("Detailed Request Log")
-st.dataframe(
-    filtered.sort_values(["Order Date", "Basket ID"], ascending=False)
-            .reset_index(drop=True),
-    use_container_width=True
-)
+    st.subheader("📊 Number of Orders by Brand")
+    orders_by_brand = (
+        filtered
+          .drop_duplicates(subset=["Basket ID", "Brand"])
+          .groupby("Brand")["Basket ID"]
+          .nunique()
+          .reset_index(name="Number of Orders")
+    )
+    st.dataframe(
+        orders_by_brand.style.format({"Number of Orders": "{:d}"}),
+        use_container_width=True
+    )
