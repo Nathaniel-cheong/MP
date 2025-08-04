@@ -134,9 +134,27 @@ selected_models = st.sidebar.multiselect(
     key="model_filter"
 )
 
-# apply filters
+# normalize date range input safely
+if isinstance(date_range, (list, tuple)):
+    if len(date_range) == 2:
+        start_date, end_date = date_range
+    elif len(date_range) == 1:
+        start_date = end_date = date_range[0]
+    else:
+        start_date = end_date = date_min
+else:
+    start_date = end_date = date_range
+
+# swap if reversed
+if start_date and end_date and start_date > end_date:
+    start_date, end_date = end_date, start_date
+
+# fallback to full span if invalid
+if start_date is None or end_date is None:
+    start_date, end_date = date_min, date_max
+
 mask = (
-    df["Order Date Only"].between(date_range[0], date_range[1]) &
+    df["Order Date Only"].between(start_date, end_date) &
     df["Brand"].isin(selected_brands) &
     df["Model"].isin(selected_models)
 )
@@ -271,6 +289,7 @@ with col1:
     st.subheader("📜 Purchase History")
     filtered_display = (
         filtered
+        .drop(columns=["Order Date Only"], errors="ignore")
         .assign(**{"Order Date": filtered["Order Date"].dt.strftime("%Y-%m-%d")})
         .sort_values(["Order Date", "Basket ID"], ascending=False)
         .reset_index(drop=True)
