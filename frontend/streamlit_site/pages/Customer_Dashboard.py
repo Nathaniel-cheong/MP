@@ -94,13 +94,7 @@ df["Order Date Only"] = df["Order Date"].dt.date
 # ─── SIDEBAR FILTERS ────────────────────────────────────────────────────────
 st.sidebar.header("🔍 Filters")
 
-date_min, date_max = df["Order Date Only"].min(), df["Order Date Only"].max()
-date_range = st.sidebar.date_input(
-    "Choose a date range",
-    value=(date_min, date_max),
-    key="order_date_range"
-)
-
+# Brand multiselect
 all_brands = sorted(df["Brand"].dropna().unique())
 selected_brands = st.sidebar.multiselect(
     "Brand",
@@ -109,6 +103,7 @@ selected_brands = st.sidebar.multiselect(
     key="brand_filter"
 )
 
+# Model multiselect, dependent on selected_brands
 available_models = (
     df.loc[df["Brand"].isin(selected_brands), "Model"]
       .dropna().unique().tolist()
@@ -127,6 +122,14 @@ selected_models = st.sidebar.multiselect(
     options=available_models,
     default=st.session_state.model_filter,
     key="model_filter"
+)
+
+# Date range (placed last)
+date_min, date_max = df["Order Date Only"].min(), df["Order Date Only"].max()
+date_range = st.sidebar.date_input(
+    "Choose a date range",
+    value=(date_min, date_max),
+    key="order_date_range"
 )
 
 # ─── normalize date range input safely ───────────────────────────────────────
