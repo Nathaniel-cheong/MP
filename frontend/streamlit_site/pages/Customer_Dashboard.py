@@ -7,22 +7,7 @@ from streamlit_cookies_manager import EncryptedCookieManager
 import random, datetime
 import numpy as np
 
-
 st.set_page_config(page_title="RFQ Dashboard", layout="wide")
-
-st.markdown("""
-<style>
-/* Allow popovers (like datepicker) to escape sidebar clipping */
-[data-testid="stSidebar"] * {
-  overflow: visible !important;
-}
-
-/* Datepicker popup should sit above everything */
-.react-datepicker-popper, .react-datepicker {
-  z-index: 9999 !important;
-}
-</style>
-""", unsafe_allow_html=True)
 
 # ─── DUMMY DATA FUNCTION ─────────────────────────────────────────────────────
 @st.cache_data(show_spinner=False)
@@ -148,7 +133,7 @@ selected_models = st.sidebar.multiselect(
     key="model_filter"
 )
 
-# normalize date range input safely
+# ─── normalize date range input safely ───────────────────────────────────────
 if isinstance(date_range, (list, tuple)):
     if len(date_range) == 2:
         start_date, end_date = date_range
@@ -167,6 +152,7 @@ if start_date and end_date and start_date > end_date:
 if start_date is None or end_date is None:
     start_date, end_date = date_min, date_max
 
+# ─── apply filters ─────────────────────────────────────────────────────────
 mask = (
     df["Order Date Only"].between(start_date, end_date) &
     df["Brand"].isin(selected_brands) &
@@ -186,8 +172,7 @@ most_part     = qty_by_part.idxmax()  if not qty_by_part.empty  else ""
 top_model     = qty_by_model.idxmax() if not qty_by_model.empty else ""
 top_brand     = qty_by_brand.idxmax() if not qty_by_brand.empty else ""
 
-# styling for tables
-
+# ─── GLOBAL STYLING (hide index, compact, flatten purchase history) ────────
 st.markdown(
     """
     <style>
@@ -196,18 +181,26 @@ st.markdown(
       .no-index table tbody th.row_heading {
           display: none;
       }
-      /* fallback: also hide first header/body cell if it's behaving differently */
       .no-index table thead th:first-child,
       .no-index table tbody th {
           display: none;
       }
-      /* optional: make the styled table more compact */
       .no-index table {
           border-collapse: collapse;
           font-size: 13px;
       }
       .no-index table td, .no-index table th {
           padding: 6px 8px;
+      }
+      .purchase-history-wrapper table {
+          background: none !important;
+      }
+      .purchase-history-wrapper th {
+          background: transparent !important;
+          border-bottom: 1px solid #ddd;
+      }
+      .purchase-history-wrapper td {
+          background: transparent !important;
       }
     </style>
     """,
@@ -261,7 +254,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ─── GRAPHS ────────────────────────────────────────────────────────────────
+# ─── GRAPHS & TABLES ───────────────────────────────────────────────────────
 col1, col2 = st.columns([2, 1])
 
 with col1:
@@ -309,14 +302,12 @@ with col1:
         .reset_index(drop=True)
     )
 
-    # Simplified styling: no alternating white/gray, transparent background, bigger text
     history_styler = (
         filtered_display.style
         .format({"Quantity": "{:d}"})
         .set_properties(**{
             "font-size": "14px",
             "padding": "8px",
-            "background-color": "transparent"
         })
         .hide(axis="index")
         .set_table_styles([
@@ -325,9 +316,8 @@ with col1:
         ])
     )
 
-    # Render without the index column
     history_html = history_styler.to_html(index=False)
-    st.markdown(f'<div class="big-table">{history_html}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="purchase-history-wrapper">{history_html}</div>', unsafe_allow_html=True)
 
 
 def styled_top_series_html(series, name, top_n=10):
@@ -345,7 +335,6 @@ def styled_top_series_html(series, name, top_n=10):
         .format({"Total Quantity": "{:d}"})
         .set_properties(**{"text-align": "left"})
     )
-    # to_html with index=False plus the CSS wrapper ensures no index column shows
     return styler.to_html(index=False)
 
 
