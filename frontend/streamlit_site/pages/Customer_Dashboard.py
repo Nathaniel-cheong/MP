@@ -10,6 +10,20 @@ import numpy as np
 
 st.set_page_config(page_title="RFQ Dashboard", layout="wide")
 
+st.markdown("""
+<style>
+/* Allow popovers (like datepicker) to escape sidebar clipping */
+[data-testid="stSidebar"] * {
+  overflow: visible !important;
+}
+
+/* Datepicker popup should sit above everything */
+.react-datepicker-popper, .react-datepicker {
+  z-index: 9999 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ─── DUMMY DATA FUNCTION ─────────────────────────────────────────────────────
 @st.cache_data(show_spinner=False)
 def get_dummy_history(n_baskets=100, seed: int = 41):
