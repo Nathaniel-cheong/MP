@@ -49,7 +49,6 @@ USE_DUMMY = True
 if USE_DUMMY:
     history = get_dummy_history()
 else:
-    # ─── COOKIE SETUP ──────────────────────────────────────────────────────────
     cookies = EncryptedCookieManager(
         prefix="my_app/",
         password="your-32-byte-long-secret-key-here"
@@ -62,7 +61,6 @@ else:
         st.error("No visitor session found. Please start from the Homepage.")
         st.stop()
 
-    # ─── LOAD REAL HISTORY ─────────────────────────────────────────────────────
     hist_json = cookies.get("purchase_history", "[]")
     try:
         history = json.loads(hist_json)
@@ -96,14 +94,13 @@ df["Order Date Only"] = df["Order Date"].dt.date
 # ─── SIDEBAR FILTERS ────────────────────────────────────────────────────────
 st.sidebar.header("🔍 Filters")
 
-# Date range
 date_min, date_max = df["Order Date Only"].min(), df["Order Date Only"].max()
 date_range = st.sidebar.date_input(
-    "Order date between",
-    value=(date_min, date_max)
+    "Choose a date range",
+    value=(date_min, date_max),
+    key="order_date_range"
 )
 
-# Brand multiselect
 all_brands = sorted(df["Brand"].dropna().unique())
 selected_brands = st.sidebar.multiselect(
     "Brand",
@@ -112,7 +109,6 @@ selected_brands = st.sidebar.multiselect(
     key="brand_filter"
 )
 
-# Model multiselect, dependent on selected_brands
 available_models = (
     df.loc[df["Brand"].isin(selected_brands), "Model"]
       .dropna().unique().tolist()
@@ -144,15 +140,12 @@ if isinstance(date_range, (list, tuple)):
 else:
     start_date = end_date = date_range
 
-# swap if reversed
 if start_date and end_date and start_date > end_date:
     start_date, end_date = end_date, start_date
 
-# fallback to full span if invalid
 if start_date is None or end_date is None:
     start_date, end_date = date_min, date_max
 
-# ─── apply filters ─────────────────────────────────────────────────────────
 mask = (
     df["Order Date Only"].between(start_date, end_date) &
     df["Brand"].isin(selected_brands) &
@@ -172,36 +165,64 @@ most_part     = qty_by_part.idxmax()  if not qty_by_part.empty  else ""
 top_model     = qty_by_model.idxmax() if not qty_by_model.empty else ""
 top_brand     = qty_by_brand.idxmax() if not qty_by_brand.empty else ""
 
-# ─── GLOBAL STYLING (hide index, compact, flatten purchase history) ────────
+# ─── GLOBAL STYLING (compact, purchase history flatten) ───────────────────
 st.markdown(
     """
     <style>
-      /* hide any leftover index column in pandas-styled HTML tables */
-      .no-index table thead th.row_heading,
-      .no-index table tbody th.row_heading {
-          display: none;
+      .metric-card { font-family: system-ui; }
+      .metrics-container {
+          display: flex;
+          gap: 16px;
+          margin-bottom: 24px;
       }
-      .no-index table thead th:first-child,
-      .no-index table tbody th {
-          display: none;
+      .metric-card {
+          flex: 1;
+          background: #f8f9fa;
+          border-radius: 8px;
+          padding: 20px;
+          text-align: center;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.1);
       }
-      .no-index table {
-          border-collapse: collapse;
-          font-size: 13px;
+      .metric-card h2 {
+          margin: 0;
+          font-size: 2.5rem;
+          color: #333;
       }
-      .no-index table td, .no-index table th {
-          padding: 6px 8px;
+      .metric-card p {
+          margin: 4px 0 0;
+          color: #666;
+          font-size: 1rem;
       }
       .purchase-history-wrapper table {
           background: none !important;
+          border-collapse: collapse;
+          width: 100%;
+          font-size: 14px;
       }
       .purchase-history-wrapper th {
           background: transparent !important;
           border-bottom: 1px solid #ddd;
+          padding: 6px 8px;
+          text-align: left;
       }
       .purchase-history-wrapper td {
           background: transparent !important;
+          padding: 6px 8px;
+          vertical-align: top;
+          text-align: left;
       }
+      .compact-html-table {
+          border-collapse: collapse;
+          width: 100%;
+          font-size: 13px;
+          margin-bottom: 8px;
+      }
+      .compact-html-table th, .compact-html-table td {
+          padding: 6px 8px;
+          text-align: left;
+          border-bottom: 1px solid #eee;
+      }
+      .compact-html-wrapper { overflow:auto; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -209,31 +230,6 @@ st.markdown(
 
 # ─── METRICS CARDS ─────────────────────────────────────────────────────────
 st.markdown(f"""
-<style>
-.metrics-container {{
-    display: flex;
-    gap: 16px;
-    margin-bottom: 24px;
-}}
-.metric-card {{
-    flex: 1;
-    background: #f8f9fa;
-    border-radius: 8px;
-    padding: 20px;
-    text-align: center;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-}}
-.metric-card h2 {{
-    margin: 0;
-    font-size: 2.5rem;
-    color: #333;
-}}
-.metric-card p {{
-    margin: 4px 0 0;
-    color: #666;
-    font-size: 1rem;
-}}
-</style>
 <div class="metrics-container">
   <div class="metric-card">
     <h2>{total_orders}</h2>
@@ -253,6 +249,30 @@ st.markdown(f"""
   </div>
 </div>
 """, unsafe_allow_html=True)
+
+# ─── HELPER: render arbitrary df as HTML table without index ───────────────
+def df_to_html_table_no_index(df: pd.DataFrame, caption: str | None = None) -> str:
+    header_cells = "".join(f"<th>{col}</th>" for col in df.columns)
+    body_rows = ""
+    for _, row in df.iterrows():
+        cells = "".join(f"<td>{row[col]}</td>" for col in df.columns)
+        body_rows += f"<tr>{cells}</tr>"
+    caption_html = (
+        f"<div style='font-weight:600; margin-bottom:4px'>{caption}</div>" if caption else ""
+    )
+    return f"""
+    <div class="compact-html-wrapper">
+      {caption_html}
+      <table class="compact-html-table">
+        <thead>
+          <tr>{header_cells}</tr>
+        </thead>
+        <tbody>
+          {body_rows}
+        </tbody>
+      </table>
+    </div>
+    """
 
 # ─── GRAPHS & TABLES ───────────────────────────────────────────────────────
 col1, col2 = st.columns([2, 1])
@@ -292,7 +312,6 @@ with col1:
     )
     st.altair_chart(line, use_container_width=True)
 
-    # ─── PURCHASE HISTORY UNDER THE CHART ────────────────────────────────────
     st.subheader("📜 Purchase History")
     filtered_display = (
         filtered
@@ -301,47 +320,52 @@ with col1:
         .sort_values(["Order Date", "Basket ID"], ascending=False)
         .reset_index(drop=True)
     )
+    filtered_display["Quantity"] = filtered_display["Quantity"].astype(int)
 
-    history_styler = (
-        filtered_display.style
-        .format({"Quantity": "{:d}"})
-        .set_properties(**{
-            "font-size": "14px",
-            "padding": "8px",
-        })
-        .hide(axis="index")
-        .set_table_styles([
-            {"selector": "table", "props": [("background-color", "transparent"), ("border-collapse", "collapse")]},
-            {"selector": "td", "props": [("padding", "8px"), ("vertical-align", "top")]},
-        ])
-    )
+    def render_purchase_history_clean(df: pd.DataFrame) -> str:
+        # Header row
+        header_cells = "".join(
+            f"<th style='position:sticky; top:0; background:#111; color:#fff; padding:10px; text-align:left; border-bottom:1px solid #444;'>"
+            f"{col}</th>" for col in df.columns
+        )
+        # Body rows with zebra striping
+        rows_html = ""
+        for i, (_, row) in enumerate(df.iterrows()):
+            bg = "#1e2330" if i % 2 == 0 else "#1b1f2a"  # subtle dark stripes
+            cells = "".join(
+                f"<td style='padding:10px; vertical-align:top; border-bottom:1px solid #2f3245; color:#e5e9f0;'>"
+                f"{row[col]}</td>" for col in df.columns
+            )
+            rows_html += f"<tr style='background:{bg};'>{cells}</tr>"
 
-    history_html = history_styler.to_html(index=False)
-    st.markdown(f'<div class="purchase-history-wrapper">{history_html}</div>', unsafe_allow_html=True)
+        return f"""
+        <div style="max-height:500px; overflow:auto; border:1px solid #2f3245; border-radius:8px;">
+        <table style="border-collapse:collapse; width:100%; font-size:14px; background: none;">
+            <thead>
+            <tr>{header_cells}</tr>
+            </thead>
+            <tbody>
+            {rows_html}
+            </tbody>
+        </table>
+        </div>
+        """
 
-
-def styled_top_series_html(series, name, top_n=10):
-    df_top = (
-        series
-        .sort_values(ascending=False)
-        .head(top_n)
-        .rename_axis(name)
-        .reset_index(name="Total Quantity")
-        .reset_index(drop=True)
-    )
-    df_top.insert(0, "Rank", np.arange(1, len(df_top) + 1))
-    styler = (
-        df_top.style
-        .format({"Total Quantity": "{:d}"})
-        .set_properties(**{"text-align": "left"})
-    )
-    return styler.to_html(index=False)
-
+    st.markdown(render_purchase_history_clean(filtered_display), unsafe_allow_html=True)
 
 with col2:
     st.subheader("🏆 Part Popularity (Top 10)")
-    part_html = styled_top_series_html(qty_by_part, "Part No.")
-    st.markdown(f'<div class="no-index">{part_html}</div>', unsafe_allow_html=True)
+    part_df = (
+        qty_by_part
+        .sort_values(ascending=False)
+        .head(10)
+        .rename_axis("Part No.")
+        .reset_index(name="Total Quantity")
+    )
+    part_df.insert(0, "Rank", np.arange(1, len(part_df) + 1))
+    part_df["Total Quantity"] = part_df["Total Quantity"].astype(int)
+    part_html = df_to_html_table_no_index(part_df, caption="Top parts by total quantity requested.")
+    st.markdown(part_html, unsafe_allow_html=True)
 
     st.subheader("📊 Number of Orders by Brand")
     orders_by_brand = (
@@ -354,11 +378,7 @@ with col2:
     orders_by_brand.insert(0, "Rank", orders_by_brand["Number of Orders"].rank(
         method="dense", ascending=False
     ).astype(int))
-    brand_df = orders_by_brand.sort_values("Number of Orders", ascending=False).reset_index(drop=True)
-    brand_styler = (
-        brand_df.style
-        .format({"Number of Orders": "{:d}"})
-        .set_properties(**{"text-align": "left"})
-    )
-    brand_html = brand_styler.to_html(index=False)
-    st.markdown(f'<div class="no-index">{brand_html}</div>', unsafe_allow_html=True)
+    orders_by_brand = orders_by_brand.sort_values("Number of Orders", ascending=False).reset_index(drop=True)
+    orders_by_brand["Number of Orders"] = orders_by_brand["Number of Orders"].astype(int)
+    brand_html = df_to_html_table_no_index(orders_by_brand, caption="Unique baskets per brand.")
+    st.markdown(brand_html, unsafe_allow_html=True)
