@@ -5,6 +5,8 @@ import pandas as pd
 import altair as alt
 from streamlit_cookies_manager import EncryptedCookieManager
 import random, datetime
+import numpy as np
+
 
 st.set_page_config(page_title="RFQ Dashboard", layout="wide")
 
@@ -152,7 +154,33 @@ most_part     = qty_by_part.idxmax()  if not qty_by_part.empty  else ""
 top_model     = qty_by_model.idxmax() if not qty_by_model.empty else ""
 top_brand     = qty_by_brand.idxmax() if not qty_by_brand.empty else ""
 
+# styling for tables
 
+st.markdown(
+    """
+    <style>
+      /* hide any leftover index column in pandas-styled HTML tables */
+      .no-index table thead th.row_heading,
+      .no-index table tbody th.row_heading {
+          display: none;
+      }
+      /* fallback: also hide first header/body cell if it's behaving differently */
+      .no-index table thead th:first-child,
+      .no-index table tbody th {
+          display: none;
+      }
+      /* optional: make the styled table more compact */
+      .no-index table {
+          border-collapse: collapse;
+          font-size: 13px;
+      }
+      .no-index table td, .no-index table th {
+          padding: 6px 8px;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ─── METRICS CARDS ─────────────────────────────────────────────────────────
 st.markdown(f"""
@@ -241,26 +269,57 @@ with col1:
 
     # ─── PURCHASE HISTORY UNDER THE CHART ────────────────────────────────────
     st.subheader("📜 Purchase History")
-    st.dataframe(
+    filtered_display = (
         filtered
-          .sort_values(["Order Date", "Basket ID"], ascending=False)
-          .reset_index(drop=True),
-        use_container_width=True
+        .assign(**{"Order Date": filtered["Order Date"].dt.strftime("%Y-%m-%d")})
+        .sort_values(["Order Date", "Basket ID"], ascending=False)
+        .reset_index(drop=True)
     )
+
+    # Simplified styling: no alternating white/gray, transparent background, bigger text
+    history_styler = (
+        filtered_display.style
+        .format({"Quantity": "{:d}"})
+        .set_properties(**{
+            "font-size": "14px",
+            "padding": "8px",
+            "background-color": "transparent"
+        })
+        .hide(axis="index")
+        .set_table_styles([
+            {"selector": "table", "props": [("background-color", "transparent"), ("border-collapse", "collapse")]},
+            {"selector": "td", "props": [("padding", "8px"), ("vertical-align", "top")]},
+        ])
+    )
+
+    # Render without the index column
+    history_html = history_styler.to_html(index=False)
+    st.markdown(f'<div class="big-table">{history_html}</div>', unsafe_allow_html=True)
+
+
+def styled_top_series_html(series, name, top_n=10):
+    df_top = (
+        series
+        .sort_values(ascending=False)
+        .head(top_n)
+        .rename_axis(name)
+        .reset_index(name="Total Quantity")
+        .reset_index(drop=True)
+    )
+    df_top.insert(0, "Rank", np.arange(1, len(df_top) + 1))
+    styler = (
+        df_top.style
+        .format({"Total Quantity": "{:d}"})
+        .set_properties(**{"text-align": "left"})
+    )
+    # to_html with index=False plus the CSS wrapper ensures no index column shows
+    return styler.to_html(index=False)
+
 
 with col2:
     st.subheader("🏆 Part Popularity (Top 10)")
-    chart_df = (
-        qty_by_part
-          .sort_values(ascending=False)
-          .head(10)
-          .rename_axis("Part No.")
-          .reset_index(name="Total Quantity")
-    )
-    st.dataframe(
-        chart_df.style.format({"Total Quantity": "{:d}"}),
-        use_container_width=True
-    )
+    part_html = styled_top_series_html(qty_by_part, "Part No.")
+    st.markdown(f'<div class="no-index">{part_html}</div>', unsafe_allow_html=True)
 
     st.subheader("📊 Number of Orders by Brand")
     orders_by_brand = (
@@ -270,7 +329,14 @@ with col2:
           .nunique()
           .reset_index(name="Number of Orders")
     )
-    st.dataframe(
-        orders_by_brand.style.format({"Number of Orders": "{:d}"}),
-        use_container_width=True
+    orders_by_brand.insert(0, "Rank", orders_by_brand["Number of Orders"].rank(
+        method="dense", ascending=False
+    ).astype(int))
+    brand_df = orders_by_brand.sort_values("Number of Orders", ascending=False).reset_index(drop=True)
+    brand_styler = (
+        brand_df.style
+        .format({"Number of Orders": "{:d}"})
+        .set_properties(**{"text-align": "left"})
     )
+    brand_html = brand_styler.to_html(index=False)
+    st.markdown(f'<div class="no-index">{brand_html}</div>', unsafe_allow_html=True)
