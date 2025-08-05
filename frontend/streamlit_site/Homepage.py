@@ -77,9 +77,7 @@ def get_brands():
             text("""
             SELECT DISTINCT pi.brand
               FROM pdf_info pi
-              JOIN pdf_log   pl ON pi.pdf_id = pl.pdf_id
-             WHERE pl.is_active = 1
-               AND pl.is_current = 1
+             WHERE pi.is_active = 1
             """)
         ).fetchall()
     return [r[0] for r in rows]
@@ -92,11 +90,9 @@ def get_years(brand: str, cc: str):
             text("""
             SELECT DISTINCT pi.year
               FROM pdf_info pi
-              JOIN pdf_log   pl ON pi.pdf_id = pl.pdf_id
              WHERE pi.brand     = :b
                AND pi.cc        = :c
-               AND pl.is_active = 1
-               AND pl.is_current = 1
+               AND pi.is_active = 1
              ORDER BY pi.year DESC
             """),
             {"b": brand, "c": cc}
@@ -111,10 +107,8 @@ def get_cc_list(brand: str):
             text("""
             SELECT DISTINCT pi.cc
               FROM pdf_info   pi
-              JOIN pdf_log    pl ON pi.pdf_id = pl.pdf_id
              WHERE pi.brand    = :b
-               AND pl.is_active = 1
-               AND pl.is_current = 1
+               AND pi.is_active = 1
             """),
             {"b": brand}
         ).fetchall()
@@ -128,11 +122,9 @@ def get_models(brand: str, cc: int):
             text("""
             SELECT DISTINCT pi.model
               FROM pdf_info   pi
-              JOIN pdf_log    pl ON pi.pdf_id = pl.pdf_id
              WHERE pi.brand    = :b
                AND pi.cc       = :c
-               AND pl.is_active = 1
-               AND pl.is_current = 1
+               AND pi.is_active = 1
             """),
             {"b": brand, "c": cc}
         ).fetchall()
@@ -147,12 +139,10 @@ def get_sections(brand: str, model: str, cc: str):
             SELECT ps.section_id, ps.section_name, ps.section_image
               FROM pdf_section ps
               JOIN pdf_info    pi ON ps.pdf_id = pi.pdf_id
-              JOIN pdf_log     pl ON pi.pdf_id = pl.pdf_id
              WHERE pi.brand = :b
                AND pi.model = :m
                AND pi.cc    = :c
-               AND pl.is_active = 1
-               AND pl.is_current = 1
+               AND pi.is_active = 1
             """),
             {"b": brand, "m": model, "c": cc}
         ).fetchall()
@@ -405,11 +395,10 @@ elif curr == 2:
                 text("""
                 SELECT DISTINCT pi.model
                   FROM pdf_info pi
-                  JOIN pdf_log   pl ON pi.pdf_id = pl.pdf_id
                  WHERE pi.brand     = :b
                    AND pi.cc        = :c
                    AND pi.year      = :y
-                   AND pl.is_active = 1
+                   AND pi.is_active = 1
                 """),
                 {"b": br, "c": cc, "y": int(sel)}
             ).fetchall()
