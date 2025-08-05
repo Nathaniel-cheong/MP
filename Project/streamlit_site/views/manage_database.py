@@ -470,21 +470,21 @@ if st.session_state.edit_page:
 
             # Load and cache pdf_section
             if "sections_df" not in st.session_state:
-                sections_df = pd.read_sql_table("pdf_section", con=conn, columns=["section_id", "section_no", "pdf_id"])
+                sections_df = pd.read_sql_table("pdf_section", con=conn, columns=["section_id", "section_no", "section_name","pdf_id"])
                 st.session_state["sections_df"] = sections_df
             else:
                 sections_df = st.session_state["sections_df"]
 
             # Filter sections by pdf_id
             sections_df = sections_df[sections_df["pdf_id"] == pdf_id]
-
+        
             # Merge to get section_no into edit_mpl_df
             edit_mpl_df = edit_mpl_df.merge(
                 sections_df[["section_id", "section_no"]],
                 on="section_id",
                 how="left"
             )
-
+            
             if edit_mpl_df.empty:
                 st.warning("No entries found for this PDF ID.")
             else:
@@ -753,7 +753,7 @@ if st.session_state.edit_page:
                 params={"pdf_id": pdf_id}
             )
 
-            all_sections_df["__sort_key__"] = all_sections_df["section_no"].apply(section_sort_key)
+            all_sections_df["__sort_key__"] = all_sections_df["section_no"].apply(filter_sorting)
             all_sections_df = all_sections_df.sort_values("__sort_key__").drop(columns="__sort_key__").reset_index(drop=True)
 
             # --- CASE 1: A section row has been selected to edit ---
