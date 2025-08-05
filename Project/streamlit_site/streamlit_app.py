@@ -140,9 +140,11 @@ if st.session_state.user_type != "guest":
             st.rerun()
 
 # For session state debugging
-# with st.sidebar:
-#     st.markdown("### Current Session State")
-#     st.json(st.session_state)
+with st.sidebar:
+    if st.button("Clear Cache"):
+        st.cache_data.clear()
+    # st.markdown("### Current Session State")
+    # st.json(st.session_state)
 
 # Run navigation bar for accessible pages
 pg = st.navigation(accessible_pages)

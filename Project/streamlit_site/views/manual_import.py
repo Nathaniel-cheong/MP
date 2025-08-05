@@ -152,7 +152,7 @@ if file_state["preview_clicked"] and form_filled:
         with st.status("Extracting Parts Data") as status:
             start_time = time.time()
             file_state["mpl_df"] = processor.extract_master_parts_list()
-            file_state["pdf_log"] = processor.extract_pdf_log(st.session_state["user_name"]) # replace with user id in future
+            file_state["pdf_log"] = processor.extract_pdf_log(st.session_state["account_id"], "Upload PDF")
             total_time = time.time() - start_time
             status.update(label=f"Parts data extraction completed in {total_time:.2f} seconds.", state="complete")
 
@@ -405,10 +405,10 @@ if file_state["preview_clicked"] and form_filled:
     if st.button("Upload Data to Database", disabled=not checked_tables) or file_state.get("replace_pending"):
         # Define required fields per table
         required_fields = {
-            "pdf_info": ["pdf_id", "year", "brand", "model", "batch_id", "cc"],
+            "pdf_info": ["pdf_id", "year", "brand", "model", "batch_id", "cc", "is_active", "archived"],
             "pdf_section_df": ["section_id", "section_no", "section_name", "pdf_id"],
             "mpl_df": ["part_no", "description", "ref_no", "section_id", "pdf_id"],
-            "pdf_log": ["pdf_id", "account_id", "timestamp", "is_active", "is_current"]
+            "pdf_log": ["pdf_id", "account_id", "timestamp", "description"]
         }
         
         # --- Check for missing/blank required fields ---
@@ -439,6 +439,8 @@ if file_state["preview_clicked"] and form_filled:
                 "model": str,
                 "batch_id": str,
                 "cc": str,
+                "is_active": int,
+                "archived": int
             })
 
             file_state["pdf_section_df"] = file_state["pdf_section_df"].astype({
@@ -460,8 +462,7 @@ if file_state["preview_clicked"] and form_filled:
                 "pdf_id": str,
                 "account_id": str,
                 "timestamp": str,
-                "is_active": int,
-                "is_current": int
+                "description": str
             })
 
         except Exception as e:
@@ -476,18 +477,21 @@ if file_state["preview_clicked"] and form_filled:
                 {"pdf_id": pdf_id}
             ).fetchone()
 
-        # --- If exists and not confirmed yet → prompt ---
+        if existing and not file_state.get("replace_confirmed", False):
+            st.warning(f"A PDF with ID '{pdf_id}' already exists in the database.")
+            if st.button("⚠️ Confirm Replace", key="confirm_replace_button"):
+                file_state["replace_confirmed"] = True
+                st.rerun()
+            else:
+                st.stop()
+
+        # Doesnt check if pdf_id is already in database
         try:
             Session = sessionmaker(bind=engine)
             session = Session()
 
             with st.status("📤 Uploading data to database...", expanded=True) as status:
                 with session.begin():
-                    # Delete old records
-                    for table in ["master_parts_list", "pdf_section", "pdf_log", "pdf_info"]:
-                        session.execute(text(f"DELETE FROM {table} WHERE pdf_id = :pdf_id"), {"pdf_id": pdf_id})
-
-                    # Insert new records
                     file_state["pdf_info"].to_sql("pdf_info", session.connection(), if_exists="append", index=False)
                     file_state["pdf_section_df"].to_sql("pdf_section", session.connection(), if_exists="append", index=False)
                     file_state["mpl_df"].to_sql("master_parts_list", session.connection(), if_exists="append", index=False)

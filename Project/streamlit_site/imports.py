@@ -44,7 +44,7 @@ if not cookies.ready():
 custom_colors = ["#8E44AD", "#E74C3C", "#3498DB", "#F1C40F"]
 
 # --- DATABASE SETUP ---
-from sqlalchemy import (create_engine, select, update, delete, distinct, text, join, or_, \
+from sqlalchemy import (create_engine, select, update, delete, distinct, text, join, or_, func, \
                         Table, Column, Integer, String, MetaData, ForeignKey, LargeBinary)
 
 from sqlalchemy.orm import sessionmaker
@@ -118,19 +118,18 @@ class PDFProcessor:
             "model": self.model,
             "batch_id": self.batch_id,
             "bike_image": self.image,
-            "cc": self.cc
+            "cc": self.cc,
+            "is_active": 0,
+            "archived": 0
         }])
     
     # Structure PDF log data for database upload
-    def extract_pdf_log(self, account_id):
+    def extract_pdf_log(self, account_id, description):
         return pd.DataFrame([{
             "pdf_id": self.pdf_id,
             "account_id": account_id,
             "timestamp": datetime.now().isoformat(),
-            "is_active": 0,
-            "is_current": 1,
-            "archived": 0,
-            "description": "Uploaded PDF"
+            "description": description
         }])
 
     # Normalize image to ensure that all image extracted have the same format
