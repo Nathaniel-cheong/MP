@@ -190,27 +190,31 @@ if st.session_state.edit_page == False:
                         if st.button("✅ Confirm Delete", key=confirm_button_key):
                             try:
                                 with engine.begin() as conn:
-                                    # --- Delete all existing logs related to this pdf_id ---
-                                    delete_stmt = delete(pdf_log_table).where(pdf_log_table.c.pdf_id == row["pdf_id"])
-                                    conn.execute(delete_stmt)
+                                    # --- Update all existing logs for this PDF to mark them inactive and not current ---
+                                    update_stmt = (
+                                        update(pdf_log_table)
+                                        .where(pdf_log_table.c.pdf_id == row["pdf_id"])
+                                        .values(is_active=0, is_current=0)
+                                    )
+                                    conn.execute(update_stmt)
 
-                                    # --- Insert a new log entry with is_active = 0 and is_current = 0 ---
+                                    # --- Insert a new log entry marking it as archived ---
                                     new_log_entry = pd.DataFrame([{
                                         "pdf_id": row["pdf_id"],
-                                        "account_id": st.session_state["account_id"],  # Who deleted it
+                                        "account_id": st.session_state["account_id"],  # Who archived it
                                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                        "is_active": 0,  # Marking the PDF as inactive
-                                        "is_current": 0,  # Marking this log entry as not current
-                                        "archived": 1
+                                        "is_active": 0,
+                                        "is_current": 0,
+                                        "archived": 1,
+                                        "description": "Archived PDF"
                                     }])
-                                    
+
                                     # Insert the new log into the pdf_log table
                                     new_log_entry.to_sql("pdf_log", con=conn, if_exists="append", index=False)
-                                    st.cache_data.clear()
 
-                                st.success(f"PDF ID {row['pdf_id']} deleted.")
-                                st.session_state[confirm_key] = False
-                                st.rerun()
+                                    st.cache_data.clear()
+                                    st.success("PDF successfully archived.")
+                                    st.rerun()
 
                             except Exception as e:
                                 st.error(f"❌ Failed to delete PDF: {e}")
@@ -981,7 +985,7 @@ if st.session_state.edit_page:
                         .where(pdf_log_table.c.pdf_id == pdf_id)
                         .values({
                             "is_current": 0,
-                            "is_active": 0
+                            "is_active": 0,
                         })
                     )
 
@@ -992,7 +996,8 @@ if st.session_state.edit_page:
                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "is_active": 1,
                         "is_current": 1,
-                        "archived": 0
+                        "archived": 0,
+                        "description": "Updated PDF"
                     }])
 
                     logged_changes.to_sql("pdf_log", con=session.connection(), if_exists="append", index=False)

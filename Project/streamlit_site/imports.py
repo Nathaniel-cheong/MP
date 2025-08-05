@@ -12,13 +12,16 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from PIL import Image as PILImage
 from io import BytesIO
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import time
 import bcrypt
-
+import calendar
+import plotly.express as px
 import streamlit as st
 from streamlit_cookies_manager import EncryptedCookieManager
 
+# Use the encrypted cookie manager for hiding cookie values
+# Extent the EncryptedCookieManager to allow cookies to expire
 class ExtendedEncryptedCookieManager(EncryptedCookieManager):
     def set_cookie_with_expiry(self, key, value, expires_at):
         self[key] = value
@@ -35,6 +38,9 @@ cookies = ExtendedEncryptedCookieManager(
 if not cookies.ready():
     st.stop()
 
+# For dashboard charts color scheme
+custom_colors = ["#8E44AD", "#E74C3C", "#3498DB", "#F1C40F"]
+
 # --- DATABASE SETUP ---
 from sqlalchemy import (create_engine, select, update, delete, distinct, text, join, or_, \
                         Table, Column, Integer, String, MetaData, ForeignKey, LargeBinary)
@@ -42,8 +48,8 @@ from sqlalchemy import (create_engine, select, update, delete, distinct, text, j
 from sqlalchemy.orm import sessionmaker
 
 # SQLAlchemy connection URL
-# stored in user/username/secrets.toml on local
-# stored in streamlit secrets on deployment
+# Local run: makes use of secrets.toml stored in user/username/secrets.toml in local files
+# Deployed: makes use of streamlit secrets stored in manage app > 3 dots > Secrets
 DATABASE_URL = f"postgresql://{st.secrets.username}:{st.secrets.password}@{st.secrets.host}:{st.secrets.port}/{st.secrets.database}"
 # Create engine
 engine = create_engine(DATABASE_URL)
@@ -117,7 +123,8 @@ class PDFProcessor:
             "timestamp": datetime.now().isoformat(),
             "is_active": 0,
             "is_current": 1,
-            "archived": 0
+            "archived": 0,
+            "description": "Uploaded PDF"
         }])
 
     @staticmethod
@@ -841,22 +848,6 @@ def section_sort_key(val):
         return (letter_part, number_part)
     else:
         return ("~", float('inf'))  # put any non-matching value at the end
-
-def custom_sort_key(value):
-    # Extract letters and numbers from the string
-    parts = re.split('[-]', value)  # Split by hyphen to handle cases like "F-10-10"
-    
-    # Create a list where each part is either a string (letters) or an integer (numbers)
-    parsed_parts = []
-    for part in parts:
-        if part.isdigit():
-            parsed_parts.append(int(part))  # Convert to integer if it's a number
-        else:
-            parsed_parts.append(part)  # Keep as string if it's a letter
-    
-    return parsed_parts
-
-import re
 
 def filter_sorting(s):
     """

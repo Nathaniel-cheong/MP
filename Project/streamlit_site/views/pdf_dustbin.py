@@ -130,15 +130,30 @@ for index, row in archived_pdfs_df.iterrows():
             # Restore Button (same column as Delete)
             if st.button("🔄 Restore", key=restore_key):
                 with engine.begin() as conn:
-                    # Update the log to restore the PDF (set archived=0, is_active=1, is_current=1)
-                    update_stmt = update(pdf_log_table).where(pdf_log_table.c.pdf_id == row['pdf_id']).values(
-                        archived=0,
-                        is_active=1,
-                        is_current=1
+                    # Step 1: Set all existing logs for this PDF to inactive & not current
+                    update_stmt = (
+                        update(pdf_log_table)
+                        .where(pdf_log_table.c.pdf_id == row["pdf_id"])
+                        .values(is_active=0, is_current=0, archived=0)
                     )
                     conn.execute(update_stmt)
 
-                st.success(f"PDF ID {row['pdf_id']} restored.")
+                    # Step 2: Insert a new log entry to reflect the restored state
+                    restored_log_entry = pd.DataFrame([{
+                        "pdf_id": row["pdf_id"],
+                        "account_id": st.session_state["account_id"],
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "is_active": 0,     # Not reactivating, just unarchiving
+                        "is_current": 1,    # Most recent log entry
+                        "archived": 0,       # Unarchived
+                        "description": "Restored PDF"
+                    }])
+
+                    restored_log_entry.to_sql("pdf_log", con=conn, if_exists="append", index=False)
+
+                st.cache_data.clear()
+                st.success("PDF successfully restored (unarchived).")
+                time.sleep(1)
                 st.rerun()
 
         st.divider()

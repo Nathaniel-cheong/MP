@@ -3,6 +3,13 @@ st.set_page_config(layout="wide")
 
 from imports import *
 
+# Logs user out after a day since last log in
+if "login_timestamp" in cookies:
+    login_time = datetime.fromisoformat(cookies["login_timestamp"])
+    if datetime.now() - login_time < timedelta(days=1):
+        cookies["login_timestamp"] = (datetime.now() - timedelta(days=2)).isoformat()
+        cookies.save()
+
 # --- PAGE SETUP ---
 signin_page = st.Page(
     page="views/signin.py",
@@ -13,13 +20,13 @@ signin_page = st.Page(
 
 pdf_import_page = st.Page(
     page="views/manual_import.py",
-    title="PDF Manual Import",
+    title="PDF Import",
     icon="📥",
 )
 
 pdf_manage_page = st.Page(
     page="views/manage_database.py",
-    title="Manage Bikes",
+    title="Manage Database",
     icon="🛢️",
 )
 
@@ -43,7 +50,7 @@ dashboard_2_page = st.Page(
 
 pdf_dusbin_page = st.Page(
     page="views/pdf_dustbin.py",
-    title="PDF Dusbin",
+    title="PDF Archives",
     icon="🗑️",
 )
 
@@ -53,24 +60,24 @@ if st.session_state.get("just_logged_in") or st.session_state.get("just_logged_o
     st.session_state.pop("just_logged_out", None)
     st.rerun()
 
-# --- DEFAULT to guest if no user_type in session ---
+# User types
 valid_user_types = {"guest", "staff", "admin"}
 
-# --- Define page groups ---
+# Defining page groups
 guest_pages = {
     "User": [signin_page],
 }
+homepage = {
+    "": [dashboard_2_page],
+}
 staff_pages = {
     "Bike Management": [pdf_import_page, pdf_manage_page, pdf_dusbin_page],
-}
-dashboard_pages = {
-    "Dashboards": [dashboard_2_page],
 }
 admin_pages = {
     "Admin": [acc_manage_page, dashboard_1_page],
 }
 
-# --- DEFAULT to guest unless valid account_id found ---
+# DEFAULT to guest unless valid account_id found
 if "account_id" not in st.session_state:
     if cookies.ready():
         cookie_id = cookies.get("account_id")
@@ -78,7 +85,7 @@ if "account_id" not in st.session_state:
             st.session_state.account_id = int(cookie_id)
 
 if "account_id" in st.session_state:
-    # Fetch user info from DB
+    # reflect the metadata
     metadata = MetaData()
     metadata.reflect(bind=engine)
     accounts = metadata.tables.get("accounts")
@@ -87,12 +94,13 @@ if "account_id" in st.session_state:
         stmt = select(accounts).where(accounts.c.account_id == st.session_state.account_id)
         result = conn.execute(stmt).fetchone()
 
+        # If valid account_id found
         if result:
             row = result._mapping
             st.session_state.user_name = row["staff_name"]
             st.session_state.user_type = row["role"]
         else:
-            # Account no longer exists, fallback to guest
+            # Error handling for invalid account_id > fallback to guest
             st.session_state.clear()
             st.session_state.user_type = "guest"
             st.session_state.user_name = ""
@@ -101,26 +109,29 @@ else:
     st.session_state.user_type = "guest"
     st.session_state.user_name = ""
 
-# Build allowed pages dynamically
+# Pages for authenticated users
 accessible_pages = {}
 
 if st.session_state.user_type == "guest":
+    # Only able to view login page
     accessible_pages.update(guest_pages)
 
 elif st.session_state.user_type == "staff":
-    accessible_pages.update(dashboard_pages)
+    # Able to view homepage and staff pages
+    accessible_pages.update(homepage)
     accessible_pages.update(staff_pages)
 
 elif st.session_state.user_type == "admin":
-    accessible_pages.update(dashboard_pages)
+    # Able to view all pages
+    accessible_pages.update(homepage)
     accessible_pages.update(staff_pages)
     accessible_pages.update(admin_pages)
 
-# --- Log Out for authenticated users ---
+# Log out button
 if st.session_state.user_type != "guest":
     with st.sidebar:
         if st.button("🔓 Log Out"):
-            # Ensure account_id cookie is deleted properly
+            # Reset cookies
             cookies["account_id"] = ""
             cookies.set_cookie_with_expiry("account_id", "", datetime.utcnow())  # expired
             cookies.save()
@@ -128,10 +139,11 @@ if st.session_state.user_type != "guest":
             st.session_state.clear()
             st.rerun()
 
-with st.sidebar:
-    st.markdown("### Current Session State")
-    st.json(st.session_state)
+# For session state debugging
+# with st.sidebar:
+#     st.markdown("### Current Session State")
+#     st.json(st.session_state)
 
-# --- Run navigation ---
+# Run navigation bar for accessible pages
 pg = st.navigation(accessible_pages)
 pg.run()

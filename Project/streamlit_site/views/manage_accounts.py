@@ -2,53 +2,49 @@ from imports import *
 
 st.title("👥 Manage Accounts")
 
-# --- Session Defaults ---
+# Initialize session states
 st.session_state.setdefault("account_edit_mode", False)
 st.session_state.setdefault("edit_account_id", None)
 
-# --- Reflect metadata ---
+# Reflect the metadata
 metadata = MetaData()
 metadata.reflect(bind=engine)
 accounts = metadata.tables.get("accounts")
 
-# --- Load accounts table ---
+# Load accounts table
 def load_accounts_table():
     with engine.connect() as conn:
         return pd.read_sql_table("accounts", con=conn)
 
-# --- Main View (Not Editing) ---
+# --- Default Page (Not edit mode) ---
 if st.session_state.account_edit_mode == False:
     accounts_df = load_accounts_table()
 
     # Exclude admin accounts
     accounts_df = accounts_df[accounts_df["role"].str.lower() != "admin"]
 
-    # Stop if empty
+    # Check if accounts is empty
     if accounts_df.empty:
         st.info("No accounts found.")
         st.stop()
 
-    search_col, button_col = st.columns([5, 1])
-
-    with search_col:
-        search_query = st.text_input("🔍 Search by staff name only:")
-
-    with button_col:
-        st.write("")  # Adds vertical spacing to align button
-        if st.button("➕ Add Account"):
-            st.session_state.account_edit_mode = True
-            st.session_state.edit_account_id = None
-            st.rerun()  # Will redirect to Add Account page
-
+    # Search bar for staff name (As long as name contains query, Not case-sensitive, Doesnt need to be exact)
+    search_query = st.text_input("🔍 Search by staff name only:")
     if search_query:
         query = search_query.strip().lower()
         accounts_df = accounts_df[accounts_df["staff_name"].astype(str).str.lower().str.contains(query)]
 
-    # Sort and prepare rows
+    # Add accounts button (Brings user to account edit page)
+    if st.button("➕ Add Account"):
+        st.session_state.account_edit_mode = True
+        st.session_state.edit_account_id = None
+        st.rerun()
+
+    # Order accoutns like in database by sorting by account id ascending
     accounts_df = accounts_df.sort_values("account_id")
     rows = accounts_df.to_dict(orient="records")
 
-    # Display two accounts per row
+    # Display only two accounts per row
     for i in range(0, len(rows), 2):
         cols = st.columns(2)
         for j in range(2):
@@ -57,7 +53,7 @@ if st.session_state.account_edit_mode == False:
                 with cols[j]:
                     with st.container(border=True):
                         account_key = str(row['account_id'])
-
+                        # Display account details
                         st.markdown(f"""
                             **👤 Name:** {row['staff_name']}  
                             **📧 Email:** {row['email']}  
@@ -67,7 +63,7 @@ if st.session_state.account_edit_mode == False:
                             **✅ Enabled:** {'Yes' if row['is_enabled'] == 1 else 'No'}
                         """)
 
-                        # Activate / Deactivate
+                        # Activate / Deactivate Account (Locks account, prevent user from logging in)
                         activate_label = "❌ Deactivate" if row["is_enabled"] == 1 else "✅ Activate"
                         if st.button(activate_label, key=f"toggle_{account_key}"):
                             new_status = 0 if row["is_enabled"] == 1 else 1
@@ -80,7 +76,7 @@ if st.session_state.account_edit_mode == False:
                             st.success(f"Account {'deactivated' if new_status == 0 else 'activated'}")
                             st.rerun()
 
-                        # Reset Password
+                        # Reset Password button
                         if st.button("🔁 Reset Password", key=f"reset_btn_{account_key}"):
                             st.session_state[f"show_reset_input_{account_key}"] = True
 
@@ -88,6 +84,7 @@ if st.session_state.account_edit_mode == False:
                             new_pw = st.text_input(f"Enter new password for {row['staff_name']}:", key=f"pw_input_{account_key}")
                             if st.button("✅ Confirm Reset", key=f"confirm_reset_{account_key}"):
                                 if new_pw:
+                                    # Hash password to hide actual password from showing in the database
                                     hashed_pw = bcrypt.hashpw(new_pw.encode(), bcrypt.gensalt()).decode()
                                     with engine.begin() as conn:
                                         conn.execute(
@@ -101,7 +98,7 @@ if st.session_state.account_edit_mode == False:
                                 else:
                                     st.warning("Password cannot be empty.")
 
-                        # Delete with confirmation
+                        # Delete Account button (With double confirmation)
                         delete_key = f"delete_{account_key}"
                         confirm_key = f"confirm_delete_{account_key}"
                         confirm_button_key = f"confirm_button_{account_key}"
@@ -109,7 +106,7 @@ if st.session_state.account_edit_mode == False:
 
                         if st.button("🗑️ Delete", key=delete_key):
                             st.session_state[confirm_key] = True
-
+                        
                         if st.session_state.get(confirm_key, False):
                             st.warning(f"Are you sure you want to delete account: {row['staff_name']}?")
 
@@ -124,7 +121,7 @@ if st.session_state.account_edit_mode == False:
                                 st.session_state[confirm_key] = False
                                 st.rerun()
 
-# --- Edit Mode ---
+# --- Edit Page (edit mode) ---
 if st.session_state.account_edit_mode == True:
     st.header("✏️ Add Account Details")
     
@@ -134,19 +131,22 @@ if st.session_state.account_edit_mode == True:
         st.session_state.edit_account_id = None
         st.rerun()
 
-    # Here you can add fields for creating or editing an account
+    # Form for required account details to create new account
     with st.form("add_account_form"):
         staff_name = st.text_input("Staff Name")
         email = st.text_input("Email")
         role = st.selectbox("Role", ["staff", "admin"])
+        # Enables the account by default after creating
         is_enabled = 1
         password = st.text_input("Password", type="password")
         confirm_password = st.text_input("Confirm Password", type="password")
 
         if st.form_submit_button("Add Account"):
+            # Ensure the passwords match
             if password != confirm_password:
                 st.error("Passwords do not match.")
             else:
+                # Hash password to hide actual password from showing in the database
                 hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
                 with engine.begin() as conn:
                     conn.execute(

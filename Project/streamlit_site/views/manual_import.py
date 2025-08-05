@@ -1,11 +1,6 @@
-'''
-bugs:
-- button for upload not smooth
-'''
-
 from imports import *
 import io
-st.title("PDF Manual Imports")
+st.title("PDF Parts Catalogue Imports")
 
 # --- Init ---
 if "file_states" not in st.session_state:
