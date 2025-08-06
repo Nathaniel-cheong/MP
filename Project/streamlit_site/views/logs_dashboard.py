@@ -122,24 +122,26 @@ with chart_col:
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        # Plot Pie Chart
-        if "description" in df.columns and not df["description"].isna().all():
-            # Get description counts using value count
-            action_counts = df["description"].value_counts().reset_index()
-            action_counts.columns = ["Action", "Count"]
-            fig = px.pie(
-                action_counts, 
-                names="Action", 
-                values="Count", 
-                title="Distribution of Log Actions", 
-                color_discrete_sequence=custom_colors # Color scheme from imports.py
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("No action descriptions available to display.")
     else:
         # Error handling for missing data (E.g. newly created staff)
         st.info("No activity to show.")
+
+    st.subheader("🥧 Action Distribution")
+     # Plot Pie Chart
+    if "description" in df.columns and not df["description"].isna().all():
+        # Get description counts using value count
+        action_counts = df["description"].value_counts().reset_index()
+        action_counts.columns = ["Action", "Count"]
+        fig = px.pie(
+            action_counts, 
+            names="Action", 
+            values="Count", 
+            title="Distribution of Log Actions", 
+            color_discrete_sequence=custom_colors # Color scheme from imports.py
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No recent edits")
 
 # --- Column 2 (Right):
 with info_col:

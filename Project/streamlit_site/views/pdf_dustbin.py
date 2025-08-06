@@ -19,22 +19,37 @@ if None in (pdf_log_table, pdf_info_table, accounts_table):
 
 # --- Cached loader functions ---
 def load_archived_pdfs():
-    # First, find PDFs that are in the "dustbin" (is_active=0, is_current=0, archived=1)
-    archived_pdfs_join = (
+    # Subquery: get latest log timestamp for each archived PDF
+    latest_archived_logs_subquery = (
+        select(
+            pdf_log_table.c.pdf_id,
+            func.max(pdf_log_table.c.timestamp).label("latest_timestamp")
+        )
+        .select_from(
+            pdf_log_table.join(pdf_info_table, pdf_log_table.c.pdf_id == pdf_info_table.c.pdf_id)
+        )
+        .where(pdf_info_table.c.archived == 1)
+        .group_by(pdf_log_table.c.pdf_id)
+        .subquery()
+    )
+
+    # Join the latest log entry with pdf_info and accounts
+    latest_archived_logs_join = (
         pdf_log_table
+        .join(latest_archived_logs_subquery,
+            (pdf_log_table.c.pdf_id == latest_archived_logs_subquery.c.pdf_id) &
+            (pdf_log_table.c.timestamp == latest_archived_logs_subquery.c.latest_timestamp)
+        )
         .join(pdf_info_table, pdf_log_table.c.pdf_id == pdf_info_table.c.pdf_id)
         .join(accounts_table, pdf_log_table.c.account_id == accounts_table.c.account_id)
     )
 
+    # Final query
     query = select(
         pdf_log_table,
         pdf_info_table,
         accounts_table.c.staff_name.label("staff_name")
-    ).select_from(archived_pdfs_join).where(
-        pdf_log_table.c.is_active == 0, 
-        pdf_log_table.c.is_current == 0,
-        pdf_log_table.c.archived == 1  # Only get archived PDFs
-    )
+    ).select_from(latest_archived_logs_join)
 
     with engine.connect() as conn:
         result = conn.execute(query)
@@ -96,13 +111,38 @@ for index, row in archived_pdfs_df.iterrows():
                 """, unsafe_allow_html=True)
 
         with action_button_col:
+            restore_key = f"restore_{row['pdf_id']}_{index}"
+
+            if st.button("🔄 Restore", key=restore_key):
+                with engine.begin() as conn:
+                    # Step 1: Set all existing logs for this PDF to inactive & not current
+                    update_stmt = (
+                        update(pdf_info_table)
+                        .where(pdf_info_table.c.pdf_id == row["pdf_id"])
+                        .values(archived=0)
+                    )
+                    conn.execute(update_stmt)
+
+                    # Step 2: Insert a new log entry to reflect the restored state
+                    restored_log_entry = pd.DataFrame([{
+                        "pdf_id": row["pdf_id"],
+                        "account_id": st.session_state["account_id"],
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "description": "Restored PDF"
+                    }])
+
+                    restored_log_entry.to_sql("pdf_log", con=conn, if_exists="append", index=False)
+
+                st.cache_data.clear()
+                st.success("PDF successfully restored (unarchived).")
+                time.sleep(1)
+                st.rerun()
+
             # Add a unique key by using the index for each button
             delete_key = f"delete_{row['pdf_id']}_{index}"
             confirm_key = f"confirm_delete_{row['pdf_id']}_{index}"
             confirm_button_key = f"confirm_button_{row['pdf_id']}_{index}"
             cancel_button_key = f"cancel_button_{row['pdf_id']}_{index}"
-
-            restore_key = f"restore_{row['pdf_id']}_{index}"
 
             # Delete Button
             if st.button("❌ Delete", key=delete_key):
@@ -116,7 +156,7 @@ for index, row in archived_pdfs_df.iterrows():
                         # Perform the permanent delete from pdf_log
                         conn.execute(delete(pdf_log_table).where(pdf_log_table.c.pdf_id == row['pdf_id']))
 
-                        # Perform the permanent delete from pdf_info if needed
+                        # Perform the permanent delete from pdf_info (Everything else gets cascaded)
                         conn.execute(delete(pdf_info_table).where(pdf_info_table.c.pdf_id == row['pdf_id']))
 
                     st.success(f"Deleted PDF ID {row['pdf_id']} permanently.")
@@ -126,34 +166,5 @@ for index, row in archived_pdfs_df.iterrows():
                 if st.button("❌ Cancel", key=cancel_button_key):
                     st.session_state[confirm_key] = False
                     st.rerun()
-
-            # Restore Button (same column as Delete)
-            if st.button("🔄 Restore", key=restore_key):
-                with engine.begin() as conn:
-                    # Step 1: Set all existing logs for this PDF to inactive & not current
-                    update_stmt = (
-                        update(pdf_log_table)
-                        .where(pdf_log_table.c.pdf_id == row["pdf_id"])
-                        .values(is_active=0, is_current=0, archived=0)
-                    )
-                    conn.execute(update_stmt)
-
-                    # Step 2: Insert a new log entry to reflect the restored state
-                    restored_log_entry = pd.DataFrame([{
-                        "pdf_id": row["pdf_id"],
-                        "account_id": st.session_state["account_id"],
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "is_active": 0,     # Not reactivating, just unarchiving
-                        "is_current": 1,    # Most recent log entry
-                        "archived": 0,       # Unarchived
-                        "description": "Restored PDF"
-                    }])
-
-                    restored_log_entry.to_sql("pdf_log", con=conn, if_exists="append", index=False)
-
-                st.cache_data.clear()
-                st.success("PDF successfully restored (unarchived).")
-                time.sleep(1)
-                st.rerun()
 
         st.divider()

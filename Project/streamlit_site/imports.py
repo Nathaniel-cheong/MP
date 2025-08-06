@@ -30,11 +30,13 @@ class ExtendedEncryptedCookieManager(EncryptedCookieManager):
             self._cookies_metadata = {}
         self._cookies_metadata[key] = {"expires_at": expires_at.isoformat()}
 
+# Configs for cookie manager
 cookies = ExtendedEncryptedCookieManager(
     prefix="myapp_",
     password="mpams"
 )
 
+# Stop the app if cookies are not ready
 if not cookies.ready():
     st.stop()
 
@@ -42,7 +44,7 @@ if not cookies.ready():
 custom_colors = ["#8E44AD", "#E74C3C", "#3498DB", "#F1C40F"]
 
 # --- DATABASE SETUP ---
-from sqlalchemy import (create_engine, select, update, delete, distinct, text, join, or_, \
+from sqlalchemy import (create_engine, select, update, delete, distinct, text, join, or_, func, and_, \
                         Table, Column, Integer, String, MetaData, ForeignKey, LargeBinary)
 
 from sqlalchemy.orm import sessionmaker
@@ -51,45 +53,50 @@ from sqlalchemy.orm import sessionmaker
 # Local run: makes use of secrets.toml stored in user/username/secrets.toml in local files
 # Deployed: makes use of streamlit secrets stored in manage app > 3 dots > Secrets
 DATABASE_URL = f"postgresql://{st.secrets.username}:{st.secrets.password}@{st.secrets.host}:{st.secrets.port}/{st.secrets.database}"
-# Create engine
+# Configure SQLAlchemy engine to manage database connection
 engine = create_engine(DATABASE_URL)
 
-# --- PDF EXTRACTION ---
-# Yamaha + Honda
+# --- PDF DATA EXTRACTION
+# Extract models based of file name (Only Yamaha + Honda) for auto-filling of manual import form
 def extract_model(pdf_name):
-    # Extract model: start of filename, letters/numbers/spaces until a special character (', _)    
+    # Format: AEROX from AEROX '... or NC750XAP from NC750XAP_...
+    # start of filename, letters/numbers/spaces until a special character (', _)    
     match = re.match(r"([A-Za-z0-9 ]+)", pdf_name)
     if match:
         return match.group(1).replace(" ", "")  # Removes any spaces
-# Yamaha + Honda
+    
+# Extract batch id based of file name (Only Yamaha + Honda) for auto-filling of manual import form
 def extract_batch_id(pdf_name, brand):
     if brand == "Yamaha":
-        # Extract model codes inside parentheses
+        # Yamaha Format: (B65P, B65R, B56S) or (1MCH, !MCG)
+        # Extract batch ids inside parentheses, ( )
         match = re.search(r"\((.*?)\)", pdf_name)
         if match:
+            #Combine parts by underscore
             parts = match.group(1).split(",")
             clean_parts = [part.strip() for part in parts]
             return "_".join(clean_parts)
     
     elif brand == "Honda":
+        # Honda Format: ..._13MJPG02_... or ..._13MKWM02_...
         # Look for uppercase/digit code between underscores (6–10 characters)
         match = re.search(r"_([A-Z0-9]{6,10})_", pdf_name)
         if match:
             return match.group(1)
-
+        
+    # If brand not supported return nothing
     return None
-# Yamaha only
+
+# Extract year based of file name (Only Yamaha) for auto-filling of manual import form
 def extract_year(pdf_name, brand):
+    # Format: AEROX '19 ... or FJR1300A '15
+    # Get the 2 digit as year after the '
     if brand == "Yamaha":
         year_match = re.search(r"'(\d{2})", pdf_name)
         return f"20{year_match.group(1)}" if year_match else None
-
-    # elif brand == "Honda":
-    #     match = re.search(r"(20\d{2}_20\d{2})", pdf_name)
-    #     return match.group(1) if match else None
-
     return None
 
+# Sub class for each PDF Processor to extract all data from PDF
 class PDFProcessor:
     def __init__(self, pdf_bytes, pdf_id, brand, year, model, batch_id, cc, image=None):        
         self.pdf_stream = BytesIO(pdf_bytes)
@@ -100,9 +107,9 @@ class PDFProcessor:
         self.batch_id = batch_id
         self.image = image
         self.cc = cc
-
         self.pdf_section_df = None
 
+    # Structure PDF info data for database upload
     def get_pdf_info(self):
         return pd.DataFrame([{
             "pdf_id": self.pdf_id,
@@ -111,22 +118,21 @@ class PDFProcessor:
             "model": self.model,
             "batch_id": self.batch_id,
             "bike_image": self.image,
-            "cc": self.cc
+            "cc": self.cc,
+            "is_active": 0,
+            "archived": 0
         }])
     
-    #def bike_image_display(self):
-        
-    def extract_pdf_log(self, account_id):
+    # Structure PDF log data for database upload
+    def extract_pdf_log(self, account_id, description):
         return pd.DataFrame([{
             "pdf_id": self.pdf_id,
             "account_id": account_id,
-            "timestamp": datetime.now().isoformat(),
-            "is_active": 0,
-            "is_current": 1,
-            "archived": 0,
-            "description": "Uploaded PDF"
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "description": description
         }])
 
+    # Normalize image to ensure that all image extracted have the same format
     @staticmethod
     def normalize_image_background(image_bytes):
         img = Image.open(BytesIO(image_bytes)).convert("L")  # Grayscale
@@ -138,13 +144,18 @@ class PDFProcessor:
         img.save(output, format="PNG")
         return output.getvalue()
 
+    # Intialize common text extraction function call (Different codes based of brand)
     def extract_text(self):
         raise NotImplementedError("Each brand must implement its own text extraction")
 
+    # Intialize common image extraction function call extraction (Different codes based of brand)
     def extract_images(self):
         raise NotImplementedError("Each brand must implement its own image extraction")
 
+# Yamaha PDF Processor
 class YamahaProcessor(PDFProcessor):
+    # Groups characters into lines based on Y position with a tolerance
+    # Reconstructs text lines left-to-right with basic spacing using X gaps
     @staticmethod
     def reconstruct_lines_from_chars(chars, y_tolerance=2.5):
         lines = defaultdict(list)
@@ -169,6 +180,7 @@ class YamahaProcessor(PDFProcessor):
             line_texts.append((y, line.rstrip()))
         return line_texts
     
+    # Calls line reconstruction function to get visually ordered text layout from character positions
     def extract_raw_text(self):
         output_lines = []
         with pdfplumber.open(self.pdf_stream) as pdf:
@@ -184,158 +196,194 @@ class YamahaProcessor(PDFProcessor):
                     if stripped_line:
                         output_lines.append(stripped_line)
         return output_lines
+    
+    # Extracts data and splits the text into clean row parts
     @staticmethod
     def structure_raw_text(raw_lines):
         structured_output = []
-        skip_indices = set()
 
+        # Keep track of indices to skip (for merged lines)
+        skip_indices = set()
+        
         for i in range(len(raw_lines)):
             if i in skip_indices:
                 continue
 
             line = raw_lines[i].strip()
+
+            # Split line into parts using 2+ spaces as separator
             parts = re.split(r"\s{2,}", line)
 
-            # --- Normalize FIG. rows to always be ['FIG.', 'number', 'description']
+            # --- Normalize FIG. format ---
+            # Check if line is a FIG. line and Handle cases like "FIG. 1" or "FIG.1" by split into ["FIG.", "1", ...]
             if parts and isinstance(parts[0], str) and parts[0].startswith("FIG."):
-                if re.match(r"^FIG\.\s*\d+$", parts[0]):
-                    match = re.match(r"^(FIG\.)\s*(\d+)$", parts[0])
-                    if match:
-                        parts = [match.group(1), match.group(2)] + parts[1:]
+                match = re.match(r"^(FIG\.)\s*(\d+)$", parts[0])
+                if match:
+                    parts = [match.group(1), match.group(2)] + parts[1:]
 
-                elif re.match(r"^FIG\.\d+$", parts[0]):
-                    match = re.match(r"^(FIG\.)(\d+)$", parts[0])
-                    if match:
-                        parts = [match.group(1), match.group(2)] + parts[1:]
-
-            # --- Skip rows that are just floating descriptions
+            # --- Skip pure descriptions (floating text without data) ---
             if len(parts) == 1 and re.match(r"^[A-Z ,\-0-9]+$", parts[0]):
-                continue
+                continue        
 
-            # --- Heuristic: Missing description, try to find it nearby
+            # --- Try to fill in missing part name ---
+            # If second part is not text, check previous/next lines for possible description
             if len(parts) >= 2 and not re.search(r"[A-Za-z]", parts[1]):
-                # Try backward merge
+                # checks if its not the first line first (nothing to get from previous line)
+                # Try merging with previous line if it's a lone description 
                 if i > 0:
                     prev_line = raw_lines[i - 1].strip()
+                    # check if line is a lone description (1 word/phrase even after 2 space split)
                     if len(re.split(r"\s{2,}", prev_line)) == 1:
                         parts.insert(1, prev_line)
                         skip_indices.add(i - 1)
 
-                # Try forward merge
-                elif i + 1 < len(raw_lines):
+                # checks if its not the last line first (nothing to get from next line)
+                # Try merging with next line if it's a lone description
+                if i + 1 < len(raw_lines):
                     next_line = raw_lines[i + 1].strip()
+                    # check if line is a lone description 
                     if len(re.split(r"\s{2,}", next_line)) == 1:
                         parts.insert(1, next_line)
                         skip_indices.add(i + 1)
 
-            # --- Extra fix: Split index + part number if mashed into one string
+            # Checks if first item contains a number and part number
+            # splits the first digit as fig number and second part as part number
             if parts and re.match(r"^\d+\s+[A-Z0-9–\-]+$", parts[0]):
                 split_part = re.split(r"\s+", parts[0], maxsplit=1)
                 parts = split_part + parts[1:]
 
+            # Append cleaned row
             structured_output.append(parts)
 
-        # --- Final cleanup
+        # --- Final cleanup: remove junk rows ---
+        # Check if row has more than 1 parts and Keep only rows that have part number 
         structured_output = [
             row for row in structured_output
             if not (
                 (len(row) == 1 and re.match(r"^[A-Z ,\-0-9]+$", row[0])) or
-                all(cell.isdigit() for cell in row)  # <-- remove purely numeric rows
+                all(cell.isdigit() for cell in row)
             )
         ]
 
         return structured_output
+    
+    # converts the structured output into a clean and structured table
     @staticmethod
     def convert_to_table(pdf_id, structured_output):
         rows = []
+        # intialize variables for keeping track of data
         section = s_name = prev_section = prev_c_name = prev_ref_no = ""
 
         for line in structured_output:
             if not line or not line[0]:
                 continue
 
-            # FIG. section headers
+            # Checks if line is a FIG. line to get the section number (This line only contains section info)
             if line[0] == "FIG." and len(line) >= 3:
                 section = line[1]
-                #print(line)
 
-                raw_name = " ".join(line[2:])  # Full raw name with possible number
-                s_name = raw_name.strip()  # Just strip leading/trailing spaces
-
+                # Get section name from after the section number by joining the rest
+                raw_name = " ".join(line[2:])
+                # Strip leading/trailing spaces
+                s_name = raw_name.strip()
+                
+                # Skips to next line while keeping track of the current section for the parts data
                 prev_section, prev_c_name = section, s_name
                 continue
 
-            # Fallback to previous if not set
+            # Fallback to previous and makes use of current section
             if not section:
                 section, s_name = prev_section, prev_c_name
 
-            # Determine if it's a valid data line
+            # Determine if it's a valid parts data line
             if len(line) >= 2 and (re.match(r'\w+[-–]\w+', line[0]) or line[0].isdigit()):
+                # Check if line contains a reference number
                 if line[0].isdigit():
                     ref_no = line[0]
                     part_no = line[1]
                     rest = line[2:]
+                    # Keep track of reference number for next few parts to use if they do not have a reference number
                     prev_ref_no = ref_no
                 else:
+                    # Makes use of previous one if there is no reference number
                     ref_no = prev_ref_no
                     part_no = line[0]
                     rest = line[1:]
             else:
                 continue
 
-            # Extract description and additional info
+            # Extract description(parts name) and additional info
             description = ""
             remarks = ""
+            # Flag for if Part Quantities detected 
+            # As it is not required and not part of the description or additional info
+            # It is located between description and remarks as ['description1', 'description2', '1', '2', 'remarks1', 'remarks2']
             numbers = []
             found_numbers = False
             for item in rest:
+                # Skip part if its part quantity seperate description and remarks
                 if item.isdigit():
                     numbers.append(item)
                     found_numbers = True
                     continue
+                
+                # Combine all description until part quantity found
                 if not found_numbers:
                     description += item + " "
+                # Combine all remarks after all part quantity found and stored
                 else:
                     remarks += item + " "
 
-            image_section_combination = f"{pdf_id}_{section}"
+            # Creating section id for section table 
+            section_id = f"{pdf_id}_{section}"
 
             rows.append([
-                part_no, description.strip(), ref_no, remarks.strip(), image_section_combination, section, s_name,  pdf_id
+                part_no, description.strip(), ref_no, remarks.strip(), section_id, section, s_name,  pdf_id
             ])
-
+        
+        # Structure the data into a DataFrame
         return pd.DataFrame(rows, columns=[
             'part_no', 'description', 'ref_no', 'add_info', 'section_id', 'section_no', 'section_name', 'pdf_id'
         ])
 
     def yamaha_extract_images_with_fig_labels(self):
+        # Gets the pdf file
         doc = fitz.open(stream=self.pdf_stream, filetype="pdf")
         data = []
+        # Keep track of section numbers (Only 1 image per section)
         seen_figs = set()
 
         for page_num in range(len(doc)):
             page = doc.load_page(page_num)
             text = page.get_text()
+            # Check if page is a section page
             matches = re.findall(r"FIG\.\s*([\w-]+)", text)
             if not matches:
                 continue
+
+            # Get the section number
             section = matches[0]
+            # Check if already stored image (Some sections have more than 1 page)
             if section in seen_figs:
                 continue
+
+            # Get image from the page
             image_list = page.get_images(full=True)
             if not image_list:
                 continue
             xref = image_list[0][0]
             base_image = doc.extract_image(xref)
+            # Normalize image to have a consistent format
             image = self.normalize_image_background(base_image["image"])
-
+            # Create section id
             section_id = f"{self.pdf_id}_{section}"
-
+            # Store the data
             data.append({
                 "section_id": section_id,
                 "pdf_id": self.pdf_id,
                 "section_image": image
             })
+            # Keep track of section numbers
             seen_figs.add(section)
 
         return pd.DataFrame(data)
@@ -373,6 +421,7 @@ class YamahaProcessor(PDFProcessor):
 
         return merged_df
 
+# Honda PDF Processor
 class HondaProcessor(PDFProcessor):
     @staticmethod
     def extract_section_with_layout(pdf_stream: str, section_code: str, section_title: str):
@@ -806,9 +855,12 @@ class HondaProcessor(PDFProcessor):
 
         return merged_df
 
+# For manual imports page, to show image preview
 def display_image_previews(df, title, brand):
     st.subheader(title)
 
+    # honda and yamaha image has different resolutions
+    # adjust the number of columns based on the brand
     num_cols = 5 if brand == "Honda" else 6
     rows = [df.iloc[i:i + num_cols] for i in range(0, len(df), num_cols)]
 
@@ -834,21 +886,13 @@ def display_image_previews(df, title, brand):
                 with cols[i]:
                     st.warning("⚠️ No valid image data") 
 
+# For manage database page, remove trailing spaces from strings in dataframe when comparing changes made from edits
 def strip_whitespace(df):
     for col in df.select_dtypes(include=["object", "string"]).columns:
         df[col] = df[col].astype(str).str.strip()
     return df
 
-def section_sort_key(val):
-    # Try to extract letter and number parts
-    match = re.match(r'^([A-Za-z]+)?-?(\d+)$', str(val).strip())
-    if match:
-        letter_part = match.group(1) or ""
-        number_part = int(match.group(2))
-        return (letter_part, number_part)
-    else:
-        return ("~", float('inf'))  # put any non-matching value at the end
-
+# For manage database page, properly sorting the sections for filter/section edit
 def filter_sorting(s):
     """
     Sort key that handles:

@@ -1,5 +1,6 @@
 from imports import *
 import io
+
 st.title("Manage Bikes")
 
 for key in ["edit_page", "edit_page_mpl_list", "edit_page_pdf_info", "edit_page_pdf_section", 'pdf_updated']:
@@ -23,18 +24,40 @@ if None in (mpl_table, pdf_info_table, pdf_log_table, pdf_section_table, account
 # --- Cached loader functions ---
 @st.cache_data(ttl=300)
 def load_pdf_details():
-    # JOIN: pdf_log ↔ pdf_info ↔ accounts
-    pdf_details_join = (
+    # Subquery: Get the latest log timestamp for each PDF
+    latest_logs_subquery = (
+        select(
+            pdf_log_table.c.pdf_id,
+            func.max(pdf_log_table.c.timestamp).label("latest_timestamp")
+        )
+        .group_by(pdf_log_table.c.pdf_id)
+        .subquery()
+    )
+
+    # Join the latest log entry
+    latest_logs_join = (
         pdf_log_table
+        .join(
+            latest_logs_subquery,
+            (pdf_log_table.c.pdf_id == latest_logs_subquery.c.pdf_id) &
+            (pdf_log_table.c.timestamp == latest_logs_subquery.c.latest_timestamp)
+        )
         .join(pdf_info_table, pdf_log_table.c.pdf_id == pdf_info_table.c.pdf_id)
         .join(accounts_table, pdf_log_table.c.account_id == accounts_table.c.account_id)
     )
 
-    query = select(
-        pdf_log_table,
-        pdf_info_table,
-        accounts_table.c.staff_name.label("staff_name")
-    ).select_from(pdf_details_join).where(pdf_log_table.c.is_current == 1)
+    # Apply filter: only non-archived PDFs
+    query = (
+        select(
+            pdf_log_table.c.description,
+            pdf_log_table.c.timestamp,
+            accounts_table.c.staff_name.label("staff_name"),
+            pdf_info_table  # Includes is_active, archived, and all pdf metadata
+        )
+        .select_from(latest_logs_join)
+        .where(pdf_info_table.c.archived == 0)  # 👈 Add this line
+        .order_by(pdf_log_table.c.timestamp.asc())  # Optional: for consistency
+    )
 
     with engine.connect() as conn:
         result = conn.execute(query)
@@ -56,11 +79,6 @@ def load_mpl_table():
 def load_pdf_section_table():
     with engine.connect() as conn:
         return pd.read_sql_table("pdf_section", con=conn)
-
-@st.cache_data(ttl=300)
-def load_master_table():
-    with engine.connect() as conn:
-        return pd.read_sql_table("master_table", con=conn)
 
 @st.cache_data(ttl=300)
 def load_master_parts_data_table():
@@ -166,10 +184,20 @@ if st.session_state.edit_page == False:
                     if st.button(toggle_label, key=toggle_key):
                         new_status = 0 if row["is_active"] == 1 else 1
                         with engine.begin() as conn:
-                            stmt = update(pdf_log_table).where(
-                                pdf_log_table.c.pdf_id == row['pdf_id']
+                            stmt = update(pdf_info_table).where(
+                                pdf_info_table.c.pdf_id == row['pdf_id']
                             ).values(is_active=new_status)
                             conn.execute(stmt)
+                            
+                            new_log_entry = pd.DataFrame([{
+                                        "pdf_id": row["pdf_id"],
+                                        "account_id": st.session_state["account_id"],
+                                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                        "description": "Updated PDF"
+                            }])
+
+                            new_log_entry.to_sql("pdf_log", conn, if_exists="append", index=False)
+
                         st.cache_data.clear()
                         st.success(f"Status for PDF ID {row['pdf_id']} updated.")
                         st.rerun()
@@ -183,38 +211,33 @@ if st.session_state.edit_page == False:
                     if st.button("❌ Delete", key=delete_key):
                         st.session_state[confirm_key] = True
 
-                    # --- Step 1: Delete all logs for the selected PDF ---
+                    # --- Step 1: Set pdf as archived ---
                     if st.session_state.get(confirm_key, False):
                         st.warning(f"Are you sure you want to delete PDF ID {row['pdf_id']}?")
 
                         if st.button("✅ Confirm Delete", key=confirm_button_key):
                             try:
                                 with engine.begin() as conn:
-                                    # --- Update all existing logs for this PDF to mark them inactive and not current ---
                                     update_stmt = (
-                                        update(pdf_log_table)
-                                        .where(pdf_log_table.c.pdf_id == row["pdf_id"])
-                                        .values(is_active=0, is_current=0)
+                                        update(pdf_info_table)
+                                        .where(pdf_info_table.c.pdf_id == row["pdf_id"])
+                                        .values(is_active=0, archived=1)
                                     )
                                     conn.execute(update_stmt)
 
-                                    # --- Insert a new log entry marking it as archived ---
                                     new_log_entry = pd.DataFrame([{
                                         "pdf_id": row["pdf_id"],
-                                        "account_id": st.session_state["account_id"],  # Who archived it
+                                        "account_id": st.session_state["account_id"],
                                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                        "is_active": 0,
-                                        "is_current": 0,
-                                        "archived": 1,
                                         "description": "Archived PDF"
                                     }])
-
-                                    # Insert the new log into the pdf_log table
                                     new_log_entry.to_sql("pdf_log", con=conn, if_exists="append", index=False)
 
-                                    st.cache_data.clear()
-                                    st.success("PDF successfully archived.")
-                                    st.rerun()
+                                st.cache_data.clear()
+                                st.success("PDF successfully archived.")
+
+                                st.session_state[confirm_key] = False
+                                st.rerun()
 
                             except Exception as e:
                                 st.error(f"❌ Failed to delete PDF: {e}")
@@ -470,21 +493,21 @@ if st.session_state.edit_page:
 
             # Load and cache pdf_section
             if "sections_df" not in st.session_state:
-                sections_df = pd.read_sql_table("pdf_section", con=conn, columns=["section_id", "section_no", "pdf_id"])
+                sections_df = pd.read_sql_table("pdf_section", con=conn, columns=["section_id", "section_no", "section_name","pdf_id"])
                 st.session_state["sections_df"] = sections_df
             else:
                 sections_df = st.session_state["sections_df"]
 
             # Filter sections by pdf_id
             sections_df = sections_df[sections_df["pdf_id"] == pdf_id]
-
+        
             # Merge to get section_no into edit_mpl_df
             edit_mpl_df = edit_mpl_df.merge(
                 sections_df[["section_id", "section_no"]],
                 on="section_id",
                 how="left"
             )
-
+            
             if edit_mpl_df.empty:
                 st.warning("No entries found for this PDF ID.")
             else:
@@ -753,7 +776,7 @@ if st.session_state.edit_page:
                 params={"pdf_id": pdf_id}
             )
 
-            all_sections_df["__sort_key__"] = all_sections_df["section_no"].apply(section_sort_key)
+            all_sections_df["__sort_key__"] = all_sections_df["section_no"].apply(filter_sorting)
             all_sections_df = all_sections_df.sort_values("__sort_key__").drop(columns="__sort_key__").reset_index(drop=True)
 
             # --- CASE 1: A section row has been selected to edit ---
@@ -979,24 +1002,11 @@ if st.session_state.edit_page:
             try:
                 Session = sessionmaker(bind=engine)
                 with Session.begin() as session:
-                    # Step 1: Set is_current = 0 for existing log rows for this pdf_id
-                    session.execute(
-                        update(pdf_log_table)
-                        .where(pdf_log_table.c.pdf_id == pdf_id)
-                        .values({
-                            "is_current": 0,
-                            "is_active": 0,
-                        })
-                    )
-
-                    # Step 2: Insert the new log row
+                    # Insert the new log row
                     logged_changes = pd.DataFrame([{
                         "pdf_id": pdf_id,
                         "account_id": st.session_state["account_id"],
                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "is_active": 1,
-                        "is_current": 1,
-                        "archived": 0,
                         "description": "Updated PDF"
                     }])
 
