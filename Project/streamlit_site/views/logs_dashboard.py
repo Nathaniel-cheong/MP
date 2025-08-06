@@ -173,14 +173,14 @@ with info_col:
         # Sorting logs data by timestamp descending and selecting the recent 10
         recent_display = (
             df.sort_values("timestamp", ascending=False)
-            .loc[:, ["pdf_id", "staff_name", "date", "time", "description"]]
+            .loc[:, ["staff_name", "description", "pdf_id",  "date", "time"]]
             .head(10)
             .rename(columns={
-                "pdf_id": "PDF ID",
                 "staff_name": "Staff",
+                "description": "Change",
+                "pdf_id": "PDF ID",
                 "date": "Date",
-                "time": "Time",
-                "description": "Change"
+                "time": "Time"
             })
         )
 

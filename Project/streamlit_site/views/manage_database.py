@@ -75,11 +75,6 @@ def load_pdf_info_table():
 def load_mpl_table():
     with engine.connect() as conn:
         return pd.read_sql_table("master_parts_list", con=conn)
-# CUrrently not in use
-@st.cache_data(ttl=300)
-def load_pdf_section_table():
-    with engine.connect() as conn:
-        return pd.read_sql_table("pdf_section", con=conn)
 
 # Default page (Not edit mode)
 if st.session_state.edit_page == False:
@@ -269,6 +264,7 @@ if st.session_state.edit_page == False:
         # Error handling
         st.info("Unable to join tables. Please check your table.")
 
+# Comments not added here
 # Edit options (Select which table to edit)
 if st.session_state.edit_page:
     # Get the selected PDF ID

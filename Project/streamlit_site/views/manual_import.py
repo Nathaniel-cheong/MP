@@ -184,13 +184,13 @@ if file_state["preview_clicked"] and form_filled:
             status.update(label=f"Parts image extraction completed in {total_time:.2f} seconds.", state="complete")
 
     # --- TABLE DISPLAY ---
-    # PDF info preview
+    # --- PDF info preview ---
     if file_state["pdf_info"] is not None:
         st.divider()
         st.subheader("PDF Information Preview")
         st.dataframe(file_state["pdf_info"], use_container_width=True)
 
-    # MPL preview + edits UI
+    # --- MPL preview + edits UI ---
     if file_state["mpl_df"] is not None:
         st.subheader("Master Parts List Preview")
         st.dataframe(file_state["mpl_df"], use_container_width=True)
@@ -233,11 +233,10 @@ if file_state["preview_clicked"] and form_filled:
                         if original_cols != new_cols:
                             st.error(f"❌ Column mismatch in uploaded file.\n\nExpected: {sorted(original_cols)}\nGot: {sorted(new_cols)}")
                         else:
-                            # Check if pdf_id has not been changed
                             uploaded_pdf_ids = new_df["pdf_id"].dropna().unique()
                             current_pdf_id = file_state["pdf_id"]
 
-                            # Check if only 1 pdf_id in the file
+                            # Check if only there is only 1 PDF_id and it has not been changed
                             if len(uploaded_pdf_ids) != 1 or uploaded_pdf_ids[0] != current_pdf_id:
                                 st.error(f"❌ PDF ID mismatch.\nExpected: '{current_pdf_id}'\nFound in file: {uploaded_pdf_ids}")
                             else:
@@ -252,6 +251,7 @@ if file_state["preview_clicked"] and form_filled:
                 cancel_import = st.form_submit_button("❌ Cancel")
 
                 if confirm_import:
+                    # Check if a valid file has been uploaded
                     if file_state.get("mpl_reimport_temp_df") is not None:
                         file_state["mpl_df"] = file_state["mpl_reimport_temp_df"]
                         file_state["mpl_reimport_temp_df"] = None
@@ -264,18 +264,20 @@ if file_state["preview_clicked"] and form_filled:
                         st.warning("⚠️ Please upload a valid Excel file before confirming.")
 
                 elif cancel_import:
+                    # Clear imported file
                     file_state["mpl_reimport_temp_df"] = None
                     file_state["mpl_show_excel_reimport"] = False
                     st.info("❌ Reimport cancelled.")
                     time.sleep(1)
                     st.rerun()
 
-        # --- Edit Mode Toggle ---
+        # Flag for edit table UI
         if st.button("✏️ Edit Table", key="mpl_edit_button"):
             file_state["mpl_edit_mode"] = True
 
-        # --- Edit Form ---
+        # Edit table UI
         if file_state["mpl_edit_mode"]:
+            # Made use of form to prevent whole code from rerunning each time a letter/number is entered
             with st.form("mpl_edit_form"):
                 st.subheader("Edit Master Parts List Table")
                 st.write("Edit the table directly below and click **Save MPL** to apply changes.")
@@ -298,15 +300,15 @@ if file_state["preview_clicked"] and form_filled:
                     time.sleep(1)
                     st.rerun()
 
-    # PDF SECTION preview + edits UI
+    # --- PDF SECTION preview + edits UI ---
     if file_state["pdf_section_df"] is not None:
-        # Original Table Preview + Changes applied
         st.subheader("PDF Section Preview")
         st.dataframe(file_state["pdf_section_df"], use_container_width=True)
 
-        # Download Table as Xlsx Button
+        # Download Table as excel file to make changes
         buffer = io.BytesIO()
         # Remove image column before export
+        # When reimport with image column, column becomes text instead of bytea format
         export_section_df = file_state["pdf_section_df"].drop(columns=["section_image"], errors="ignore")
         export_section_df.to_excel(buffer, index=False)
         st.download_button(
@@ -317,23 +319,26 @@ if file_state["preview_clicked"] and form_filled:
             key="pdf_section_download_button"
         )
 
-        # Init internal flags for UI
+        # Init flags
         file_state.setdefault("pdf_section_show_excel_reimport", False)
         file_state.setdefault("pdf_section_excel_uploaded", False)
         file_state.setdefault("pdf_section_edit_mode", False)
 
-        # Button to toggle reimport section UI
+        # Flag to show reimport UI
         if st.button("📤 Reimport Excel File", key="pdf_section_reimport_button"):
             file_state["pdf_section_show_excel_reimport"] = True
 
-        # Reimport section UI
+        # Reimport UI
         if file_state["pdf_section_show_excel_reimport"]:
+            # Made use of form to handle validation before applying changes to main file state
             with st.form("pdf_section_reimport_excel_form"):
                 st.markdown("Upload an Excel file to replace the current PDF Section table.")
                 pdf_section_excel_upload = st.file_uploader("Upload Edited Excel File (.xlsx)", type="xlsx")
 
+                # Validate data
                 if pdf_section_excel_upload:
                     try:
+                        # Check if columns match before upload
                         new_df = pd.read_excel(pdf_section_excel_upload, engine="openpyxl")
                         original_cols = set(file_state["pdf_section_df"].drop(columns=["section_image"], errors="ignore").columns)
                         new_cols = set(new_df.columns)
@@ -341,10 +346,10 @@ if file_state["preview_clicked"] and form_filled:
                         if original_cols != new_cols:
                             st.error(f"❌ Column mismatch in uploaded file.\n\nExpected: {sorted(original_cols)}\nGot: {sorted(new_cols)}")
                         else:
-                            # ✅ Check pdf_id match
                             uploaded_pdf_ids = new_df["pdf_id"].dropna().unique()
                             current_pdf_id = file_state["pdf_id"]
 
+                            # Check if only there is only 1 PDF_id and it has not been changed
                             if len(uploaded_pdf_ids) != 1 or uploaded_pdf_ids[0] != current_pdf_id:
                                 st.error(f"❌ PDF ID mismatch.\nExpected: '{current_pdf_id}'\nFound in file: {uploaded_pdf_ids}")
                             else:
@@ -354,14 +359,16 @@ if file_state["preview_clicked"] and form_filled:
                                     new_df = new_df.merge(images_df, on="section_id", how="left")
                                 file_state["pdf_section_reimport_temp_df"] = new_df
                                 st.success("✅ File uploaded. Please confirm import below.")
-
+                    # Error handling
                     except Exception as e:
                         st.error(f"❌ Failed to read Excel file: {e}")
 
+                # Form action buttons
                 confirm_import = st.form_submit_button("✅ Confirm Import")
                 cancel_import = st.form_submit_button("❌ Cancel")
 
                 if confirm_import:
+                    # Check if a valid file has been uploaded
                     if file_state.get("pdf_section_reimport_temp_df") is not None:
                         file_state["pdf_section_df"] = file_state["pdf_section_reimport_temp_df"]
                         file_state["pdf_section_reimport_temp_df"] = None
@@ -374,18 +381,20 @@ if file_state["preview_clicked"] and form_filled:
                         st.warning("⚠️ Please upload a valid Excel file before confirming.")
 
                 elif cancel_import:
+                    # Clear imported file
                     file_state["pdf_section_reimport_temp_df"] = None
                     file_state["pdf_section_show_excel_reimport"] = False
                     st.info("❌ Reimport cancelled.")
                     time.sleep(1)
                     st.rerun()
 
-        # Button to toggle Edit Table UI
+        # Flag for edit table UI
         if st.button("✏️ Edit Table", key="pdf_section_edit_button"):
             file_state["pdf_section_edit_mode"] = True
 
         # Edit Table UI
         if file_state["pdf_section_edit_mode"]:
+            # Made use of form to prevent whole code from rerunning each time a letter/number is entered
             with st.form("pdf_section_edit_form"):
                 st.subheader("Edit PDF Section Table")
                 st.write("Edit the table directly below and click **Save PDF Sections** to apply changes.")
@@ -408,29 +417,31 @@ if file_state["preview_clicked"] and form_filled:
                     time.sleep(1)
                     st.rerun()
 
-        # Image Preview UI
+        # --- Image Preview ---
         st.subheader("Preview: Parts Images")
 
-        # Initialize toggle state
+        # Initialize image preview flag
         if "show_image_previews" not in st.session_state:
             st.session_state["show_image_previews"] = False
 
-        # Show/Hide button with immediate rerun
+        # Show/Hide image button
         if st.button("🔍 Display Image Previews" if not st.session_state["show_image_previews"] else "❌ Hide Image Previews", key="toggle_preview_btn"):
             st.session_state["show_image_previews"] = not st.session_state["show_image_previews"]
             st.rerun()  # Force rerun immediately after state change
 
-        # Conditionally show images
+        # Handle image previews
         if st.session_state["show_image_previews"]:
             st.divider()
+            # Display images from imports.py
             display_image_previews(file_state["pdf_section_df"], "", file_state["brand"])
             st.divider()
 
     st.divider()
     checked_tables = st.checkbox("Confirm", key="confirm_tables")
 
-    # --- Final Upload Button ---
-    if st.button("Upload Data to Database", disabled=not checked_tables) or file_state.get("replace_pending"):
+    # --- Final Upload to DB Button ---
+    # Check tables before upload as empty/blank values are still being inserted to non-null columns
+    if st.button("Upload Data to Database", disabled=not checked_tables):
         # Define required fields per table
         required_fields = {
             "pdf_info": ["pdf_id", "year", "brand", "model", "batch_id", "cc", "is_active", "archived"],
@@ -439,21 +450,23 @@ if file_state["preview_clicked"] and form_filled:
             "pdf_log": ["pdf_id", "account_id", "timestamp", "description"]
         }
         
-        # --- Check for missing/blank required fields ---
+        # Check for missing/blank required fields and shows rows with missing fields
         for df_key, required_cols in required_fields.items():
             df = file_state.get(df_key)
+            # Error handling
             if df is None:
                 st.error(f"❌ Missing table: {df_key}")
                 st.stop()
-
+            # Extra check for columns
             for col in required_cols:
                 if col not in df.columns:
                     st.error(f"❌ '{df_key}' is missing required column '{col}'")
                     st.stop()
 
-                # Check for NaN or blank/whitespace strings
+                # Check for missing/empty/blank values
                 invalid_rows = df[col].isna() | df[col].astype(str).str.strip().eq("")
                 if invalid_rows.any():
+                    # Keep tracks of rows and shows them
                     bad_indices = df[invalid_rows].index.tolist()
                     st.error(f"❌ {df_key} → Column '{col}' is empty/null in rows: {bad_indices}")
                     st.stop()
@@ -493,11 +506,12 @@ if file_state["preview_clicked"] and form_filled:
                 "description": str
             })
 
+        # Error handling
         except Exception as e:
             st.error(f"❌ Failed to convert column types: {e}")
             st.stop()
 
-        # --- Check if pdf_id already exists ---
+        # Check if pdf_id already exists
         pdf_id = file_state["pdf_info"]["pdf_id"].iloc[0]
         with engine.connect() as conn:
             existing = conn.execute(
@@ -505,14 +519,17 @@ if file_state["preview_clicked"] and form_filled:
                 {"pdf_id": pdf_id}
             ).fetchone()
 
+        # Block user from uploading if PDF already exist in the database
         if existing:
             st.error(f"❌ A PDF with ID '{pdf_id}' already exists in the database. Please Delete if first if you wish to reupload.")
             st.stop()
 
+        # Upload into database
         try:
             Session = sessionmaker(bind=engine)
             session = Session()
 
+            # Show upload status
             with st.status("📤 Uploading data to database...", expanded=True) as status:
                 if "add_info" in file_state["mpl_df"].columns:
                     file_state["mpl_df"]["add_info"] = (
@@ -523,26 +540,26 @@ if file_state["preview_clicked"] and form_filled:
                         .replace("nan", "")
                     )
 
+                # Upload using session to ensure everything is in one transaction
                 with session.begin():
                     file_state["pdf_info"].to_sql("pdf_info", session.connection(), if_exists="append", index=False)
                     file_state["pdf_section_df"].to_sql("pdf_section", session.connection(), if_exists="append", index=False)
                     file_state["mpl_df"].to_sql("master_parts_list", session.connection(), if_exists="append", index=False)
                     file_state["pdf_log"].to_sql("pdf_log", session.connection(), if_exists="append", index=False)
 
-                file_state["replace_confirmed"] = False
-                file_state["replace_pending"] = False
-
                 status.update(label="✅ Upload completed successfully.", state="complete")
                 st.success("✅ Upload completed successfully.")
+                # For manage database page to show changes
                 st.cache_data.clear()
 
-                # ✅ Clean up after successful upload
+                # Clean up session after successful upload
                 st.session_state["file_states"].pop(filename, None)
                 st.session_state["uploaded_filename"] = ""
                 st.session_state.pop("brand_select", None)
                 st.session_state.pop("show_image_previews", None)
                 st.session_state.pop("confirm_tables", None)
-                
+        
+        # Error handling
         except Exception as e:
             status.update(label="❌ Upload failed.", state="error")
             st.error(f"❌ Upload failed: {e}")
