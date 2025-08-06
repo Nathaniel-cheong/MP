@@ -1,4 +1,5 @@
 from imports import *
+import plotly.graph_objects as go
 st.title("📊 Logs Dashboard")
 
 # Load and merge pdf_log with accounts(For staff) and pdf_info (For brand)
@@ -97,28 +98,25 @@ with chart_col:
     st.subheader("📅 Log Activity per Day")
     if not df.empty:
         # Get daily log counts using value count
-        df["date"] = pd.to_datetime(df["timestamp"]).dt.date
         daily_logs = df["date"].value_counts().sort_index()
         daily_logs_df = daily_logs.rename_axis("Date").reset_index(name="Log Count")
         daily_logs_df["Date"] = pd.to_datetime(daily_logs_df["Date"])
 
-        # Fill missing dates with 0
-        full_range = pd.date_range(start=daily_logs_df["Date"].min(), end=daily_logs_df["Date"].max())
-        full_logs_df = (
-            daily_logs_df.set_index("Date")
-            .reindex(full_range, fill_value=0)
-            .rename_axis("Date")
-            .reset_index()
-        )
-        full_logs_df["Log Count"] = full_logs_df["Log Count"].astype(int)
+        fig = go.Figure()
 
-        # Plot Table Chart
-        fig = px.line(full_logs_df, x="Date", y="Log Count", title="📅 Log Activity per Day")
+        fig = px.bar(
+            daily_logs_df,
+            x="Date",
+            y="Log Count",
+            title="📅 Log Activity per Day",
+            labels={"Log Count": "Log Count", "Date": "Date"},
+        )
         fig.update_layout(
-            height=350,
-            yaxis=dict(tickmode='linear', dtick=1, title='Log Count'),
-            xaxis_title="Date",
-            margin=dict(t=50, b=20)
+            height=400,
+            yaxis=dict(tickmode='linear', dtick=5, title="Log Count"),
+            xaxis=dict(tickformat="%b %d", tickangle=45, title="Date"),
+            margin=dict(t=60, b=60),
+            template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white"
         )
         st.plotly_chart(fig, use_container_width=True)
 
