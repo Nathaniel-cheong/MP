@@ -15,7 +15,6 @@ pdf_log_table = metadata.tables.get("pdf_log")
 pdf_section_table = metadata.tables.get("pdf_section")
 accounts_table = metadata.tables.get("accounts")
 
-
 # --- Check if table was found ---
 if None in (mpl_table, pdf_info_table, pdf_log_table, pdf_section_table, accounts_table):
     st.error("❌ Could not find one or more required tables.")
@@ -150,7 +149,7 @@ if st.session_state.edit_page == False:
                     status_str = (
                         '<span style="color:green; font-weight:bold;">Active</span>'
                         if row["is_active"] == 1
-                        else '<span style="color:red; font-weight:bold;">Not Active</span>'
+                        else '<span style="color:red; font-weight:bold;">Inactive</span>'
                     )
 
                     with details_col:
@@ -199,7 +198,8 @@ if st.session_state.edit_page == False:
                             new_log_entry.to_sql("pdf_log", conn, if_exists="append", index=False)
 
                         st.cache_data.clear()
-                        st.success(f"Status for PDF ID {row['pdf_id']} updated.")
+                        st.toast(f"Status for PDF ID {row['pdf_id']} updated.", icon="✅")
+                        time.sleep(1)
                         st.rerun()
 
                 with delete_button_col:
@@ -208,7 +208,7 @@ if st.session_state.edit_page == False:
                     confirm_button_key = f"confirm_button_{row['pdf_id']}"
                     cancel_button_key = f"cancel_button_{row['pdf_id']}"
 
-                    if st.button("❌ Delete", key=delete_key):
+                    if st.button("❌ Delete", key=delete_key, help="Store into PDF Archive"):
                         st.session_state[confirm_key] = True
 
                     # --- Step 1: Set pdf as archived ---
@@ -234,8 +234,8 @@ if st.session_state.edit_page == False:
                                     new_log_entry.to_sql("pdf_log", con=conn, if_exists="append", index=False)
 
                                 st.cache_data.clear()
-                                st.success("PDF successfully archived.")
-
+                                st.toast(f"Archived PDF ID {row['pdf_id']}", icon="🗑️")
+                                time.sleep(1)
                                 st.session_state[confirm_key] = False
                                 st.rerun()
 
