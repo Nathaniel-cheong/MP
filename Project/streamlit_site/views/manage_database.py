@@ -3,6 +3,7 @@ import io
 
 st.title("Manage Bikes")
 
+# initlize session states
 for key in ["edit_page", "edit_page_mpl_list", "edit_page_pdf_info", "edit_page_pdf_section", 'pdf_updated']:
     st.session_state.setdefault(key, False)
 
@@ -20,7 +21,8 @@ if None in (mpl_table, pdf_info_table, pdf_log_table, pdf_section_table, account
     st.error("❌ Could not find one or more required tables.")
     st.stop()
 
-# --- Cached loader functions ---
+# --- Cached DB query functions ---
+# (latest pdf_log + pdf_info + accounts)
 @st.cache_data(ttl=300)
 def load_pdf_details():
     # Subquery: Get the latest log timestamp for each PDF
@@ -73,25 +75,24 @@ def load_pdf_info_table():
 def load_mpl_table():
     with engine.connect() as conn:
         return pd.read_sql_table("master_parts_list", con=conn)
-
+# CUrrently not in use
 @st.cache_data(ttl=300)
 def load_pdf_section_table():
     with engine.connect() as conn:
         return pd.read_sql_table("pdf_section", con=conn)
 
-@st.cache_data(ttl=300)
-def load_master_parts_data_table():
-    with engine.connect() as conn:
-        return pd.read_sql_table("master_parts_data_table", con=conn)
-
+# Default page (Not edit mode)
 if st.session_state.edit_page == False:
     pdf_details_df = load_pdf_details()
-
+    
+    # Creating filters
     if not pdf_details_df.empty:
+        # Get unique values
         unique_brands = sorted(pdf_details_df["brand"].dropna().unique())
         unique_years = sorted(pdf_details_df["year"].dropna().unique())
         unique_ccs = sorted(pdf_details_df["cc"].dropna().unique())
 
+        # Seperating 3 equal columns for filters for layout
         with st.container():
             col1, col2, col3 = st.columns(3)
 
@@ -109,13 +110,16 @@ if st.session_state.edit_page == False:
                 cc_options = ["All"] + [str(cc) for cc in unique_ccs]
                 st.session_state["filter_cc"] = st.selectbox("Filter by CC", cc_options, index=cc_options.index(st.session_state["filter_cc"]))
 
+    # Save filters to session
     selected_brand = st.session_state["filter_brand"]
     selected_year = st.session_state["filter_year"]
     selected_cc = st.session_state["filter_cc"]
 
+    # Loading PDF and Change details
     if not pdf_details_df.empty:
         pdf_details_df = pdf_details_df.copy()
 
+        # Apply filters
         if st.session_state["filter_brand"] != "All":
             pdf_details_df = pdf_details_df[pdf_details_df["brand"] == st.session_state["filter_brand"]]
 
@@ -126,11 +130,13 @@ if st.session_state.edit_page == False:
             pdf_details_df = pdf_details_df[pdf_details_df["cc"].astype(str) == st.session_state["filter_cc"]]
 
         st.divider()
-
+    
         for index, row in pdf_details_df.iterrows():
             with st.container():
+                # Seperating 4 equal columns for layout
                 image_col, pdf_details_col, edit_button_col, delete_button_col = st.columns([1, 2, 1, 1])
 
+                # Bike image display
                 with image_col:
                     if row["bike_image"]:
                         try:
@@ -140,18 +146,21 @@ if st.session_state.edit_page == False:
                     else:
                         st.write("🚫 No image available")
 
+                # PDF details and changes display
                 with pdf_details_col:
                     details_col, changes_col = st.columns(2)
 
                     ts = datetime.fromisoformat(str(row['timestamp']))
                     date_str = ts.strftime("%Y-%m-%d")
                     time_str = ts.strftime("%H:%M")
+                    # Status text color: Green if active, red if inactive
                     status_str = (
                         '<span style="color:green; font-weight:bold;">Active</span>'
                         if row["is_active"] == 1
                         else '<span style="color:red; font-weight:bold;">Inactive</span>'
                     )
 
+                    # PDF details display
                     with details_col:
                         st.markdown(f"""
                             <u><b>PDF DETAILS:</b></u><br>
@@ -162,6 +171,7 @@ if st.session_state.edit_page == False:
                             <b>CC:</b> {row['cc']}<br>
                         """, unsafe_allow_html=True)
 
+                    # PDF changes display
                     with changes_col:
                         st.markdown(f"""
                             <u><b>RECENT CHANGES:</b></u><br>
@@ -171,12 +181,15 @@ if st.session_state.edit_page == False:
                             <b>Status</b>: {status_str}
                         """, unsafe_allow_html=True)
 
+                # Edit buttons (Edit tables and Activate/Deactivate PDF)
                 with edit_button_col:
+                    # Edit tables brings to next page where user can choose which table they want to edit
                     if st.button("✏️ Edit Details", key=f"edit_{row['pdf_id']}"):
                         st.session_state.edit_page = True
                         st.session_state.selected_pdf_id = row['pdf_id']
                         st.rerun()
 
+                    # Activate/Deactivate button
                     toggle_label = "🔄 Set Inactive" if row["is_active"] == 1 else "✅ Set Active"
                     toggle_key = f"toggle_status_{row['pdf_id']}"
 
@@ -202,6 +215,7 @@ if st.session_state.edit_page == False:
                         time.sleep(1)
                         st.rerun()
 
+                # Delete button
                 with delete_button_col:
                     delete_key = f"delete_{row['pdf_id']}"
                     confirm_key = f"confirm_delete_{row['pdf_id']}"
@@ -211,7 +225,7 @@ if st.session_state.edit_page == False:
                     if st.button("❌ Delete", key=delete_key, help="Store into PDF Archive"):
                         st.session_state[confirm_key] = True
 
-                    # --- Step 1: Set pdf as archived ---
+                    # Get user to double confirm
                     if st.session_state.get(confirm_key, False):
                         st.warning(f"Are you sure you want to delete PDF ID {row['pdf_id']}?")
 
@@ -239,6 +253,7 @@ if st.session_state.edit_page == False:
                                 st.session_state[confirm_key] = False
                                 st.rerun()
 
+                            # Error handling
                             except Exception as e:
                                 st.error(f"❌ Failed to delete PDF: {e}")
                                 st.session_state[confirm_key] = False
@@ -251,26 +266,32 @@ if st.session_state.edit_page == False:
                             
                 st.divider()
     else:
+        # Error handling
         st.info("Unable to join tables. Please check your table.")
 
-# --- Edit Mode ---
+# Edit options (Select which table to edit)
 if st.session_state.edit_page:
+    # Get the selected PDF ID
     pdf_id = st.session_state.get("selected_pdf_id")
+    # Error handling
     if not pdf_id:
         st.warning("No PDF selected.")
         st.stop()
-
+    
+    # Back to table selection button (When in editing any tables)
     if any([
         st.session_state.edit_page_mpl_list,
         st.session_state.edit_page_pdf_info,
         st.session_state.edit_page_pdf_section
     ]):
+        # Handle back button (For multi-page in 1 file)
         if st.button("🔙 Back to Table Selection"):
             for key in ["edit_page_mpl_list", "edit_page_pdf_info", "edit_page_pdf_section"]:
                 st.session_state[key] = False
             st.session_state["section_page"] = 0
             st.rerun()
 
+    # Back to default page button (When selecting which table to edit)
     elif st.button("🔙 Back to All PDFs"):
         # Clear all editing page flags
         for key in [
@@ -283,12 +304,14 @@ if st.session_state.edit_page:
         st.session_state.pop("selected_pdf_id", None)
         st.rerun()
 
+    # Choose which table to edit page
     if not any([
         st.session_state.edit_page_mpl_list,
         st.session_state.edit_page_pdf_info,
         st.session_state.edit_page_pdf_section
     ]):
         st.subheader(f"Choose table to edit for PDF ID: {pdf_id}")
+        # Flag which table to edit
         if st.button("Edit pdf_info"):
             st.session_state.edit_page_pdf_info = True
             st.rerun()
@@ -305,7 +328,7 @@ if st.session_state.edit_page:
             st.divider()
             st.subheader("Edit: pdf_info")
 
-            pdf_info_df = pd.read_sql_table("pdf_info", con=conn)
+            pdf_info_df = load_pdf_info_table()
             edit_pdf_info_df = pdf_info_df[pdf_info_df["pdf_id"] == pdf_id]
 
             if edit_pdf_info_df.empty:
@@ -387,6 +410,8 @@ if st.session_state.edit_page:
                     st.markdown(f"**PDF ID:** `{pdf_id}`")
                     st.markdown(f"**Model:** `{row['model']}`")
                     st.markdown(f"**Batch ID:** `{row['batch_id']}`")
+                    st.markdown(f"**Status:** `{row['is_active']}`")
+                    st.markdown(f"**Archived:** `{row['archived']}`")
 
                     # Optional image
                     if "bike_image" in row and row["bike_image"]:
@@ -419,7 +444,9 @@ if st.session_state.edit_page:
                                 "model": row["model"],
                                 "batch_id": row["batch_id"],
                                 "bike_image": row.get("bike_image", None),
-                                "cc": edited_cc
+                                "cc": edited_cc,
+                                "is_active": row["is_active"],
+                                "archived": row["archived"]
                             }])
                             st.session_state["pdf_info_edit_mode"] = False
                             st.success("✅ Draft saved in session.")
@@ -482,13 +509,14 @@ if st.session_state.edit_page:
 
                 except Exception as e:
                     st.error(f"❌ Failed to update the database: {e}")
-
+        
+        # Edit master_parts_list page
         elif st.session_state.edit_page_mpl_list:
             st.subheader("Edit: master_parts_list")
             st.warning("Please do not touch the **mpl_id** column when editing")
 
             # Load master_parts_list filtered by pdf_id
-            mpl_df = pd.read_sql_table("master_parts_list", con=conn)
+            mpl_df = load_mpl_table()
             edit_mpl_df = mpl_df[mpl_df["pdf_id"] == pdf_id].sort_values("mpl_id")
 
             # Load and cache pdf_section
@@ -996,7 +1024,7 @@ if st.session_state.edit_page:
                             st.session_state["section_page"] += 1
                             st.rerun()
 
-        # Logging info into logs when a table is edited
+        # Generic logging for any updates made
         if st.session_state['pdf_updated']:
             time.sleep(1)
             try:

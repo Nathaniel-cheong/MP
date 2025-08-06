@@ -38,6 +38,7 @@ if submit:
         )
         result = conn.execute(stmt).fetchone()
         
+        # Check account details
         if result:
             row = result._mapping
             # Get hashed password from the database
@@ -68,10 +69,10 @@ if submit:
                 time.sleep(1)
                 st.rerun()
             else:
-                # Error handling for incorrect password
+                # Error handling for wrong password
                 st.session_state["login_error"] = "❌ Incorrect password."
                 st.rerun()
         else:
-            # Error handling for incorrect username
+            # Error handling for wrong username/email
             st.session_state["login_error"] = "❌ Account not found."
             st.rerun()

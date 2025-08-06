@@ -102,6 +102,7 @@ with chart_col:
         daily_logs_df = daily_logs.rename_axis("Date").reset_index(name="Log Count")
         daily_logs_df["Date"] = pd.to_datetime(daily_logs_df["Date"])
 
+        # Plot chart & chart configurations
         fig = go.Figure()
 
         fig = px.bar(

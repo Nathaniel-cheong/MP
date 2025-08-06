@@ -1,3 +1,4 @@
+# Importing relevant libraries
 import os
 import re
 import time
@@ -267,7 +268,7 @@ class YamahaProcessor(PDFProcessor):
 
         return structured_output
     
-    # converts the structured output into a clean and structured table
+    # Converts the structured output into a clean and structured table
     @staticmethod
     def convert_to_table(pdf_id, structured_output):
         rows = []
@@ -346,6 +347,7 @@ class YamahaProcessor(PDFProcessor):
             'part_no', 'description', 'ref_no', 'add_info', 'section_id', 'section_no', 'section_name', 'pdf_id'
         ])
 
+    # Extracts the images and assign the section to each imagefrom the pdf
     def yamaha_extract_images_with_fig_labels(self):
         # Gets the pdf file
         doc = fitz.open(stream=self.pdf_stream, filetype="pdf")
@@ -388,34 +390,43 @@ class YamahaProcessor(PDFProcessor):
 
         return pd.DataFrame(data)
     
+    # Consistent master parts list extraction function naming
     def extract_master_parts_list(self):
+        # Extract raw text in its exact layout from PDF
         raw_lines = self.extract_raw_text()
+        # Extract relevant information into parts line by line
         structured_data = self.structure_raw_text(raw_lines)
+        # Structure parts into a table
         df = self.convert_to_table(
             pdf_id=self.pdf_id,
             structured_output=structured_data
         )
 
+        # Seperating columns into different tables
         mpl_df = df[['part_no', 'description', 'ref_no', 'add_info', 'section_id', 'pdf_id']]
         pdf_section_df = df[['section_id', 'section_no', 'section_name', 'pdf_id']].drop_duplicates().reset_index(drop=True)
         self.pdf_section_df = pdf_section_df
 
-        print(mpl_df)
-        print(pdf_section_df)
+        # debugging purposes
+        # print(mpl_df)
+        # print(pdf_section_df)
 
         return mpl_df
 
+    # Consistent PDF section and Image extraction function naming
     def extract_pdf_section(self):
+        # Extract images and assign the section to each image
         image_df = self.yamaha_extract_images_with_fig_labels()
 
+        # Merge PDF sections with extracted images
         merged_df = pd.merge(
             self.pdf_section_df,
             image_df,
             on=["section_id", "pdf_id"],
-            how="inner"  # use "left" if you want to keep all rows from section_df
+            how="inner"
         )
 
-        # Optional: Reorder columns
+        # Re-order columns
         final_columns = ['section_id', 'section_no', 'section_name', 'section_image', 'pdf_id']
         merged_df = merged_df[final_columns]
 
@@ -759,7 +770,8 @@ class HondaProcessor(PDFProcessor):
         final_df["section_id"] = final_df["pdf_id"] + "_" + final_df["section_no"]
         final_df[['part_no', 'description', 'ref_no', 'add_info', 'section_id', 'section_no', 'section_name', 'pdf_id']]
         return final_df
-
+    
+    # Extracts the images and assign the section to each imagefrom the pdf
     def honda_extract_images_with_fig_labels(self):
         doc = fitz.open(stream=self.pdf_stream, filetype="pdf")
         data = []
@@ -824,32 +836,40 @@ class HondaProcessor(PDFProcessor):
                 })
 
         return pd.DataFrame(data)
-
+    
+    # Consistent master parts list extraction function naming
     def extract_master_parts_list(self):
+        # Extracting all data
         df = self.extract_all_sections_one_pass(
             pdf_id=self.pdf_id,
             pdf_stream=self.pdf_stream
         )
 
+        # Seperating columns into different tables
         mpl_df = df[['part_no', 'description', 'ref_no', 'add_info', 'section_id', 'pdf_id']]
         pdf_section_df = df[['section_id', 'section_no', 'section_name', 'pdf_id']].drop_duplicates().reset_index(drop=True)
         self.pdf_section_df = pdf_section_df
 
-        print(mpl_df)
-        print(pdf_section_df)
+        # Debugging purposes
+        # print(mpl_df)
+        # print(pdf_section_df)
 
         return mpl_df
     
+    # Consistent PDF section and Image extraction function naming
     def extract_pdf_section(self):
+        # Extract images and assign the section to each image
         image_df = self.honda_extract_images_with_fig_labels()
+
+        # Merge PDF sections with extracted images
         merged_df = pd.merge(
             self.pdf_section_df,
             image_df,
             on=["section_id", "pdf_id"],
-            how="inner"  # use "left" if you want to keep all rows from section_df
+            how="inner" 
         )
 
-        # Optional: Reorder columns
+        # Re-order columns
         final_columns = ['section_id', 'section_no', 'section_name', 'section_image', 'pdf_id']
         merged_df = merged_df[final_columns]
 

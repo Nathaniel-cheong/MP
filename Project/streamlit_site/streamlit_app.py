@@ -3,12 +3,9 @@ st.set_page_config(layout="wide")
 
 from imports import *
 
-# Logs user out after a day since last log in
-if "login_timestamp" in cookies:
-    login_time = datetime.fromisoformat(cookies["login_timestamp"])
-    if datetime.now() - login_time < timedelta(days=1):
-        cookies["login_timestamp"] = (datetime.now() - timedelta(days=2)).isoformat()
-        cookies.save()
+# Intitalize default session states (Guest by default)
+st.session_state.setdefault("user_type", "guest")
+st.session_state.setdefault("user_name", "")
 
 # --- PAGE SETUP ---
 signin_page = st.Page(
@@ -54,11 +51,13 @@ pdf_dusbin_page = st.Page(
     icon="🗑️",
 )
 
-# Handle post-login or post-logout rerun
-if st.session_state.get("just_logged_in") or st.session_state.get("just_logged_out"):
-    st.session_state.pop("just_logged_in", None)
-    st.session_state.pop("just_logged_out", None)
-    st.rerun()
+# Logs user out after a day since last log in
+if "login_timestamp" in cookies:
+    login_time = datetime.fromisoformat(cookies["login_timestamp"])
+    if datetime.now() - login_time < timedelta(days=1):
+        cookies["login_timestamp"] = (datetime.now() - timedelta(days=2)).isoformat()
+        cookies.save()
+
 
 # User types
 valid_user_types = {"guest", "staff", "admin"}
@@ -84,6 +83,7 @@ if "account_id" not in st.session_state:
         if cookie_id:
             st.session_state.account_id = int(cookie_id)
 
+# If valid account detected
 if "account_id" in st.session_state:
     # reflect the metadata
     metadata = MetaData()
@@ -97,6 +97,20 @@ if "account_id" in st.session_state:
         # If valid account_id found
         if result:
             row = result._mapping
+
+            # If account deactived
+            if not row["is_enabled"]:
+                # Treat user as guest
+                cookies.set_cookie_with_expiry("account_id", "", datetime.utcnow())  # Expire cookie
+                cookies.save()
+                st.session_state["user_type"] = "guest"
+                st.session_state["user_name"] = ""
+                st.session_state.pop("account_id", None)
+                st.toast("Your account has been deactivated.", icon="🔒")
+                time.sleep(2)
+                st.rerun()
+
+            # If Valid & active account
             st.session_state.user_name = row["staff_name"]
             st.session_state.user_type = row["role"]
         else:
@@ -106,6 +120,7 @@ if "account_id" in st.session_state:
             st.session_state.user_name = ""
             cookies.clear()
 else:
+    # Error handling for invalid account_id > fallback to guest
     st.session_state.user_type = "guest"
     st.session_state.user_name = ""
 
@@ -140,11 +155,11 @@ if st.session_state.user_type != "guest":
             st.rerun()
 
 # For session state debugging
-with st.sidebar:
-    if st.button("Clear Cache"):
-        st.cache_data.clear()
-    # st.markdown("### Current Session State")
-    # st.json(st.session_state)
+# with st.sidebar:
+#     if st.button("Clear Cache"):
+#         st.cache_data.clear()
+#     st.markdown("### Current Session State")
+#     st.json(st.session_state)
 
 # Run navigation bar for accessible pages
 pg = st.navigation(accessible_pages)

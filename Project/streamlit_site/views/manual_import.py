@@ -2,10 +2,9 @@ from imports import *
 import io
 st.title("PDF Parts Catalogue Imports")
 
-# --- Init ---
+# Init session state
 if "file_states" not in st.session_state:
     st.session_state["file_states"] = {}
-
 if "uploaded_filename" not in st.session_state:
     st.session_state["uploaded_filename"] = ""
 
@@ -17,14 +16,16 @@ st.sidebar.markdown("""
 
 # --- File Upload ---
 uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
-
+# Forces the user to upload a file before doing anything else
 if uploaded_file is None:
     st.warning("Please upload a PDF file.")
     st.stop()
 
 filename = uploaded_file.name
+# Check if previously import PDF for this session
 is_new_file = filename != st.session_state["uploaded_filename"]
 
+# IF new file for session, intialize file state to persist throughout session
 if is_new_file:
     st.session_state["uploaded_filename"] = filename
     st.session_state["file_states"][filename] = {
@@ -43,26 +44,28 @@ if is_new_file:
         "preview_loaded": None
     }
 
+# Open file states's session
 file_state = st.session_state["file_states"][filename]
 
-# --- Brand Select ---
+# Brand options
 brand_options = ["Select a Brand", "Yamaha", "Honda"]
 
-# Init previous brand if missing
+# Keep track of previous brand to detect change
 if "previous_brand" not in file_state:
     file_state["previous_brand"] = "Select a Brand"
 
-# Use session_state key to detect change 
+# Keep track of current brand selected to session
 if "brand_select" not in st.session_state:
     st.session_state.brand_select = file_state["brand"]
 
+# --- FORM (brand) ---
 current_brand = st.selectbox("Brand:", brand_options, key="brand_select")
-
+# Forces user to select a brand before continuing
 if current_brand == "Select a Brand":
     st.warning("Please select a brand.")
     st.stop()
 
-# If brand changed → reset fields 
+# If brand changed → clear session states
 if st.session_state.brand_select != file_state["previous_brand"]:
     file_state["brand"] = st.session_state.brand_select
     file_state["batch_id"] = extract_batch_id(filename, file_state["brand"])
@@ -71,42 +74,51 @@ if st.session_state.brand_select != file_state["previous_brand"]:
     file_state["previous_brand"] = st.session_state.brand_select
     file_state["preview_clicked"] = False
     file_state["preview_loaded"] = None
-    
+
     file_state['mpl_df'] = None
     file_state['pdf_section_df'] = None
     file_state['pdf_log'] = None
     file_state['pdf_info'] = None
 
 # --- FORM (page variables) ---
-st.subheader("Data Preview")
+st.subheader("Data Preview Form")
+# Let user know that some parts of the form has been autofilled
 st.info("Please review all form fields. All values were auto-filled from the file name or loaded from previous session and may require correction.")
 
+# Form inputs
 form_model = st.text_input("Model:", value=file_state["model"])
 form_batch_id = st.text_input("Batch ID:", value=file_state["batch_id"])
 form_year = st.text_input("Year:", value=file_state["year"])
 cc_options = ["<200", "200-400", ">400"]
 form_cc = st.selectbox("Brand:", cc_options, key="cc")
 
+# Ensure that user has selected the correct CC instead of the default "<200"
 if form_cc == "<200":
     st.info("Ensure that you have selected the correct CC of the bike.")
 
+# Flag if all inputs of the form is filled
 form_filled = all([
     str(form_model).strip(),
     str(form_batch_id).strip(),
     str(form_year).strip()
 ])
 
+# Bike image upload
 form_image = st.file_uploader("Upload the bike image (Optional)", type=["jpg", "jpeg", "png"])
 image_bytes = form_image.read() if form_image else None
 
+# Form validation
 form_accepted = False
+# All form fields must be field except image
 if not form_filled:
     st.warning("Please fill in all fields to enable 'Preview Data' button.")
+# Year must be in a valid format
 elif not re.fullmatch(r"\d{4}", str(form_year).strip()):
     st.error("Please enter a valid Year (format: YYYY).")
 else:
     form_accepted = True
 
+# Checkbox to enable preview button
 checked_form = False
 if form_accepted:
     checked_form = st.checkbox("Confirm")
@@ -117,7 +129,7 @@ if st.button("Preview Data", disabled=not preview_enabled):
     if file_state["preview_loaded"]:
         file_state['pdf_info'] = None
 
-    # Copy form to session state
+    # Store form values to file state after user confirmation
     file_state["model"] = form_model
     file_state["batch_id"] = form_batch_id
     file_state["year"] = form_year
@@ -126,8 +138,10 @@ if st.button("Preview Data", disabled=not preview_enabled):
 
 # --- MAIN PROCESSING ---
 if file_state["preview_clicked"] and form_filled:
+    # Creating PDF_id
     file_state["pdf_id"] = file_state["model"] + "_" + file_state["batch_id"]
 
+    # Passing parameters to processor
     parameters = [
         uploaded_file.read(),
         file_state["pdf_id"],
@@ -139,30 +153,38 @@ if file_state["preview_clicked"] and form_filled:
         image_bytes
     ]
 
+    # Intializing processor based of brand from imports.py
     if file_state["brand"] == "Yamaha":
         processor = YamahaProcessor(*parameters)
 
     elif file_state["brand"] == "Honda":
         processor = HondaProcessor(*parameters)
     
+    # Extract all data if none has been stored in file state
     if file_state["pdf_info"] is None:
+        # Structure PDF_info using form inputs that was passed into processor
         file_state["pdf_info"] = processor.get_pdf_info()
 
     if file_state["mpl_df"] is None or file_state["pdf_section_df"] is None:
+        # Display processing status and time taken
         with st.status("Extracting Parts Data") as status:
             start_time = time.time()
+            # mpl_df extraction
             file_state["mpl_df"] = processor.extract_master_parts_list()
-            file_state["pdf_log"] = processor.extract_pdf_log(st.session_state["account_id"], "Upload PDF")
+            # Create the log for which staff is uploading the pdf
+            file_state["pdf_log"] = processor.extract_pdf_log(st.session_state["account_id"], "Uploaded PDF")
             total_time = time.time() - start_time
             status.update(label=f"Parts data extraction completed in {total_time:.2f} seconds.", state="complete")
 
         with st.status("Extracting Images") as status:
             start_time = time.time()
+            # pdf_section extraction (section info + image)
             file_state["pdf_section_df"] = processor.extract_pdf_section()
             total_time = time.time() - start_time
             status.update(label=f"Parts image extraction completed in {total_time:.2f} seconds.", state="complete")
 
-    # --- DISPLAY ---
+    # --- TABLE DISPLAY ---
+    # PDF info preview
     if file_state["pdf_info"] is not None:
         st.divider()
         st.subheader("PDF Information Preview")
@@ -173,7 +195,7 @@ if file_state["preview_clicked"] and form_filled:
         st.subheader("Master Parts List Preview")
         st.dataframe(file_state["mpl_df"], use_container_width=True)
 
-        # --- Download Button ---
+        # Download table as excel file to make changes
         buffer = io.BytesIO()
         file_state["mpl_df"].to_excel(buffer, index=False)
         st.download_button(
@@ -184,23 +206,26 @@ if file_state["preview_clicked"] and form_filled:
             key="mpl_download_button"
         )
 
-        # --- Init internal flags ---
+        # Intialize flags
         file_state.setdefault("mpl_show_excel_reimport", False)
         file_state.setdefault("mpl_excel_uploaded", False)
         file_state.setdefault("mpl_edit_mode", False)
 
-        # --- Toggle to show reimport section ---
+        # Flag to show reimport UI
         if st.button("📤 Reimport File", key="mpl_reimport_button"):
             file_state["mpl_show_excel_reimport"] = True
 
-        # --- Reimport Excel UI ---
+        # Reimport UI
         if file_state["mpl_show_excel_reimport"]:
+            # Made use of form to handle validation before applying changes to main file state
             with st.form("mpl_reimport_excel_form"):
                 st.markdown("Upload an Excel file to replace the current Master Parts List.")
                 mpl_excel_upload = st.file_uploader("Upload Edited MPL Excel File (.xlsx)", type="xlsx")
 
+                # Validate data
                 if mpl_excel_upload:
                     try:
+                        # Check if columns match before upload
                         new_df = pd.read_excel(mpl_excel_upload, engine="openpyxl")
                         original_cols = set(file_state["mpl_df"].columns)
                         new_cols = set(new_df.columns)
@@ -208,18 +233,21 @@ if file_state["preview_clicked"] and form_filled:
                         if original_cols != new_cols:
                             st.error(f"❌ Column mismatch in uploaded file.\n\nExpected: {sorted(original_cols)}\nGot: {sorted(new_cols)}")
                         else:
-                            # ✅ Check if pdf_id matches the one in form
+                            # Check if pdf_id has not been changed
                             uploaded_pdf_ids = new_df["pdf_id"].dropna().unique()
                             current_pdf_id = file_state["pdf_id"]
 
+                            # Check if only 1 pdf_id in the file
                             if len(uploaded_pdf_ids) != 1 or uploaded_pdf_ids[0] != current_pdf_id:
                                 st.error(f"❌ PDF ID mismatch.\nExpected: '{current_pdf_id}'\nFound in file: {uploaded_pdf_ids}")
                             else:
                                 file_state["mpl_reimport_temp_df"] = new_df
-                                st.success("✅ File uploaded. Please confirm import below.")
+                                st.success("✅ File uploaded. Applying changes")
+                    # Error handling
                     except Exception as e:
                         st.error(f"❌ Failed to read Excel file: {e}")
 
+                # Form action buttons
                 confirm_import = st.form_submit_button("✅ Confirm Import")
                 cancel_import = st.form_submit_button("❌ Cancel")
 
