@@ -111,38 +111,8 @@ for index, row in archived_pdfs_df.iterrows():
                 """, unsafe_allow_html=True)
 
         with action_button_col:
-            # Add a unique key by using the index for each button
-            delete_key = f"delete_{row['pdf_id']}_{index}"
-            confirm_key = f"confirm_delete_{row['pdf_id']}_{index}"
-            confirm_button_key = f"confirm_button_{row['pdf_id']}_{index}"
-            cancel_button_key = f"cancel_button_{row['pdf_id']}_{index}"
-
             restore_key = f"restore_{row['pdf_id']}_{index}"
 
-            # Delete Button
-            if st.button("❌ Delete", key=delete_key):
-                st.session_state[confirm_key] = True
-
-            if st.session_state.get(confirm_key, False):
-                st.warning(f"Are you sure you want to permanently delete PDF ID {row['pdf_id']}?")
-
-                if st.button("✅ Confirm Delete", key=confirm_button_key):
-                    with engine.begin() as conn:
-                        # Perform the permanent delete from pdf_log
-                        conn.execute(delete(pdf_log_table).where(pdf_log_table.c.pdf_id == row['pdf_id']))
-
-                        # Perform the permanent delete from pdf_info (Everything else gets cascaded)
-                        conn.execute(delete(pdf_info_table).where(pdf_info_table.c.pdf_id == row['pdf_id']))
-
-                    st.success(f"Deleted PDF ID {row['pdf_id']} permanently.")
-                    st.session_state[confirm_key] = False
-                    st.rerun()
-
-                if st.button("❌ Cancel", key=cancel_button_key):
-                    st.session_state[confirm_key] = False
-                    st.rerun()
-
-            # Restore Button (same column as Delete)
             if st.button("🔄 Restore", key=restore_key):
                 with engine.begin() as conn:
                     # Step 1: Set all existing logs for this PDF to inactive & not current
@@ -167,5 +137,34 @@ for index, row in archived_pdfs_df.iterrows():
                 st.success("PDF successfully restored (unarchived).")
                 time.sleep(1)
                 st.rerun()
+
+            # Add a unique key by using the index for each button
+            delete_key = f"delete_{row['pdf_id']}_{index}"
+            confirm_key = f"confirm_delete_{row['pdf_id']}_{index}"
+            confirm_button_key = f"confirm_button_{row['pdf_id']}_{index}"
+            cancel_button_key = f"cancel_button_{row['pdf_id']}_{index}"
+
+            # Delete Button
+            if st.button("❌ Delete", key=delete_key):
+                st.session_state[confirm_key] = True
+
+            if st.session_state.get(confirm_key, False):
+                st.warning(f"Are you sure you want to permanently delete PDF ID {row['pdf_id']}?")
+
+                if st.button("✅ Confirm Delete", key=confirm_button_key):
+                    with engine.begin() as conn:
+                        # Perform the permanent delete from pdf_log
+                        conn.execute(delete(pdf_log_table).where(pdf_log_table.c.pdf_id == row['pdf_id']))
+
+                        # Perform the permanent delete from pdf_info (Everything else gets cascaded)
+                        conn.execute(delete(pdf_info_table).where(pdf_info_table.c.pdf_id == row['pdf_id']))
+
+                    st.success(f"Deleted PDF ID {row['pdf_id']} permanently.")
+                    st.session_state[confirm_key] = False
+                    st.rerun()
+
+                if st.button("❌ Cancel", key=cancel_button_key):
+                    st.session_state[confirm_key] = False
+                    st.rerun()
 
         st.divider()

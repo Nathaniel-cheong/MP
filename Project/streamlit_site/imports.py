@@ -44,7 +44,7 @@ if not cookies.ready():
 custom_colors = ["#8E44AD", "#E74C3C", "#3498DB", "#F1C40F"]
 
 # --- DATABASE SETUP ---
-from sqlalchemy import (create_engine, select, update, delete, distinct, text, join, or_, func, \
+from sqlalchemy import (create_engine, select, update, delete, distinct, text, join, or_, func, and_, \
                         Table, Column, Integer, String, MetaData, ForeignKey, LargeBinary)
 
 from sqlalchemy.orm import sessionmaker
@@ -128,7 +128,7 @@ class PDFProcessor:
         return pd.DataFrame([{
             "pdf_id": self.pdf_id,
             "account_id": account_id,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "description": description
         }])
 

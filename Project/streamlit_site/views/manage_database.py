@@ -46,20 +46,24 @@ def load_pdf_details():
         .join(accounts_table, pdf_log_table.c.account_id == accounts_table.c.account_id)
     )
 
-    # Select everything, especially is_active and archived from pdf_info
-    query = select(
-        pdf_log_table.c.description,
-        pdf_log_table.c.timestamp,
-        accounts_table.c.staff_name.label("staff_name"),
-        pdf_info_table  # Includes is_active, archived, and all pdf metadata
-    ).select_from(latest_logs_join)
+    # Apply filter: only non-archived PDFs
+    query = (
+        select(
+            pdf_log_table.c.description,
+            pdf_log_table.c.timestamp,
+            accounts_table.c.staff_name.label("staff_name"),
+            pdf_info_table  # Includes is_active, archived, and all pdf metadata
+        )
+        .select_from(latest_logs_join)
+        .where(pdf_info_table.c.archived == 0)  # 👈 Add this line
+        .order_by(pdf_log_table.c.timestamp.asc())  # Optional: for consistency
+    )
 
     with engine.connect() as conn:
         result = conn.execute(query)
         rows = result.fetchall()
 
     return pd.DataFrame(rows, columns=result.keys())
-
 
 @st.cache_data(ttl=300)
 def load_pdf_info_table():

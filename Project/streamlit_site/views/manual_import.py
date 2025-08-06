@@ -477,20 +477,24 @@ if file_state["preview_clicked"] and form_filled:
                 {"pdf_id": pdf_id}
             ).fetchone()
 
-        if existing and not file_state.get("replace_confirmed", False):
-            st.warning(f"A PDF with ID '{pdf_id}' already exists in the database.")
-            if st.button("⚠️ Confirm Replace", key="confirm_replace_button"):
-                file_state["replace_confirmed"] = True
-                st.rerun()
-            else:
-                st.stop()
+        if existing:
+            st.error(f"❌ A PDF with ID '{pdf_id}' already exists in the database. Please Delete if first if you wish to reupload.")
+            st.stop()
 
-        # Doesnt check if pdf_id is already in database
         try:
             Session = sessionmaker(bind=engine)
             session = Session()
 
             with st.status("📤 Uploading data to database...", expanded=True) as status:
+                if "add_info" in file_state["mpl_df"].columns:
+                    file_state["mpl_df"]["add_info"] = (
+                        file_state["mpl_df"]["add_info"]
+                        .fillna("")
+                        .astype(str)
+                        .str.strip()
+                        .replace("nan", "")
+                    )
+
                 with session.begin():
                     file_state["pdf_info"].to_sql("pdf_info", session.connection(), if_exists="append", index=False)
                     file_state["pdf_section_df"].to_sql("pdf_section", session.connection(), if_exists="append", index=False)
@@ -502,6 +506,7 @@ if file_state["preview_clicked"] and form_filled:
 
                 status.update(label="✅ Upload completed successfully.", state="complete")
                 st.success("✅ Upload completed successfully.")
+                st.cache_data.clear()
 
                 # ✅ Clean up after successful upload
                 st.session_state["file_states"].pop(filename, None)
