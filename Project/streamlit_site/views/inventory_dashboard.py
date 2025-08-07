@@ -33,7 +33,7 @@ with st.container():
     metric_cols[0].metric("📦 Total Bikes", df["pdf_id"].nunique())
     metric_cols[1].metric("✅ Active Bikes", df[df["is_active"] == 1]["pdf_id"].nunique())
     metric_cols[2].metric("❌ Inactive Bikes", df[(df["is_active"] == 0) & (df["archived"] == 0)]["pdf_id"].nunique())
-    metric_cols[3].metric("🗑️ Archived Bikes (In PDF Dustbin)", df[df["archived"] == 1]["pdf_id"].nunique())
+    metric_cols[3].metric("🗑️ Archived Bikes (In PDF Archives)", df[df["archived"] == 1]["pdf_id"].nunique())
 
 # --- Pie Charts for Brand and CC Distribution ---
 st.subheader("🥧 Distribution of Bike Models")

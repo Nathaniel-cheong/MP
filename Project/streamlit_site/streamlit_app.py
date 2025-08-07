@@ -51,14 +51,6 @@ pdf_dusbin_page = st.Page(
     icon="🗑️",
 )
 
-# Logs user out after a day since last log in
-if "login_timestamp" in cookies:
-    login_time = datetime.fromisoformat(cookies["login_timestamp"])
-    if datetime.now() - login_time < timedelta(days=1):
-        cookies["login_timestamp"] = (datetime.now() - timedelta(days=2)).isoformat()
-        cookies.save()
-
-
 # User types
 valid_user_types = {"guest", "staff", "admin"}
 
@@ -155,9 +147,9 @@ if st.session_state.user_type != "guest":
             st.rerun()
 
 # For session state debugging
-# with st.sidebar:
-#     if st.button("Clear Cache"):
-#         st.cache_data.clear()
+with st.sidebar:
+    if st.button("Clear Cache"):
+        st.cache_data.clear()
 #     st.markdown("### Current Session State")
 #     st.json(st.session_state)
 

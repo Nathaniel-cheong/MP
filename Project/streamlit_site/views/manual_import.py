@@ -282,6 +282,7 @@ if file_state["preview_clicked"] and form_filled:
                 st.subheader("Edit Master Parts List Table")
                 st.write("Edit the table directly below and click **Save MPL** to apply changes.")
                 editable_mpl_df = file_state["mpl_df"]
+                # Table editor
                 edited_mpl_df = st.data_editor(editable_mpl_df, use_container_width=True)
 
                 confirm_edit = st.form_submit_button("✅ Save MPL")
@@ -399,6 +400,7 @@ if file_state["preview_clicked"] and form_filled:
                 st.subheader("Edit PDF Section Table")
                 st.write("Edit the table directly below and click **Save PDF Sections** to apply changes.")
                 editable_pdf_section_df = file_state["pdf_section_df"]
+                # Table editor
                 edited_pdf_section_df = st.data_editor(editable_pdf_section_df, use_container_width=True)
 
                 confirm_edit = st.form_submit_button("✅ Save PDF Sections")
