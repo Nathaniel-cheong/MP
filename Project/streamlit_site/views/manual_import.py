@@ -8,12 +8,6 @@ if "file_states" not in st.session_state:
 if "uploaded_filename" not in st.session_state:
     st.session_state["uploaded_filename"] = ""
 
-# --- UI Sidebar ---
-st.sidebar.markdown("""
-**For More Infomation**
--
-""")
-
 # --- File Upload ---
 uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
 # Forces the user to upload a file before doing anything else
