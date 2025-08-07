@@ -771,62 +771,73 @@ class HondaProcessor(PDFProcessor):
         final_df[['part_no', 'description', 'ref_no', 'add_info', 'section_id', 'section_no', 'section_name', 'pdf_id']]
         return final_df
     
-    # Extracts the images and assign the section to each imagefrom the pdf
+    # Extracts the images and assign the section to each image from the pdf
     def honda_extract_images_with_fig_labels(self):
         doc = fitz.open(stream=self.pdf_stream, filetype="pdf")
         data = []
 
+        # Keywords to identify relevant pages that contain multiple sections with images
         MAIN_GROUPS = ["ENGINEGROUP", "FRAMEGROUP"]
+
+        # Regex pattern to extract section numbers like E-1, F-23, or EOP-12-3
         section_pattern = r"\b((?:E|F|EOP)-\d{1,3}(?:-\d+)?)\b"
 
-        seen_section_ids = set()  # ✅ Track globally across pages
+        # Set to keep track of which section_ids have already been added
+        seen_section_ids = set()
 
+        # Loop through each page in the PDF
         for page_num in range(len(doc)):
             page = doc.load_page(page_num)
             text = page.get_text()
             lines = text.splitlines()
 
-            # --- Check if page is a MAIN GROUP page ---
+            # --- Check if current page is a MAIN GROUP page ---
+            # Check if it contains any of the main group keywords
             text_no_spaces = re.sub(r"\s+", "", text).lower()
             if not any(group.lower() in text_no_spaces for group in MAIN_GROUPS):
                 continue
 
-            # --- Check if page has images ---
+            # Skip if page contains no images
             image_list = page.get_images()
             if not image_list:
                 continue
 
-            # --- Extract section labels ---
+            # Extract section numbers from the text lines using the regex pattern
             sections_found = []
             for line in lines:
                 match = re.search(section_pattern, line)
                 if match:
                     sections_found.append(match.group(1))
 
+            # If no section numbers were found, skip this page
             if not sections_found:
                 print(f"\n=== PAGE {page_num+1} ===")
                 print("[SKIP] No sections found")
                 continue
 
-            print(f"\n=== PAGE {page_num+1} ===")
-            print(f"[MAIN GROUP PAGE] → {len(image_list)} image(s) found")
-            print(f"Sections found: {sections_found}")
-
             # --- Map sections to images ---
+            # Match each section number with its corresponding image on the page
             for idx, section in enumerate(sections_found):
+                # Safety check: break if there are more sections than images
                 if idx >= len(image_list):
                     print(f"⚠️ Not enough images for sections — stopping at {idx}")
                     break
 
+                # Construct section_id using PDF ID and section number
                 section_id = f"{self.pdf_id}_{section}"
+
+                # Avoid duplicate entries for the same section (Only 1 image per section number)
                 if section_id in seen_section_ids:
                     print(f"⚠️ Duplicate section_id {section_id} — skipping")
                     continue
                 seen_section_ids.add(section_id)
 
+                # Extract the image 
                 image_info = image_list[idx]
                 xref = image_info[0]
                 base_image = doc.extract_image(xref)
+
+                # Normalize background
                 image = self.normalize_image_background(base_image["image"])
 
                 data.append({
