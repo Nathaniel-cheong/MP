@@ -8,7 +8,7 @@ if st.button("🔄 Refresh Data"):
     time.sleep(1)
     st.rerun()
 
-# Load and merge pdf_info with pdf_log (to get pdf status)
+# Load and merge pdf_info (to get pdf status)
 @st.cache_data(ttl=600)
 def load_inventory():
     with engine.connect() as conn:

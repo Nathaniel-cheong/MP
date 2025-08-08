@@ -547,14 +547,7 @@ if st.session_state.edit_page:
             # Load + cache pdf_section table and subset by pdf_id for filter
             sections_df = load_pdf_sections_without_image()
             sections_df = sections_df[sections_df["pdf_id"] == pdf_id]
-        
-            # Merge to get section_no into edit_mpl_df for filtering
-            edit_mpl_df = edit_mpl_df.merge(
-                sections_df[["section_id", "section_no"]],
-                on="section_id",
-                how="left"
-            )
-            
+
             # Error handling
             if edit_mpl_df.empty:
                 st.warning("No entries found for this PDF ID.")
@@ -588,16 +581,25 @@ if st.session_state.edit_page:
                 # Filter UI
                 selected_section = st.selectbox("Filter by Section", section_options)
 
-                # Applying filters
+                # Join section_no into session_state["mpl_df"] for filtering preview only
+                preview_df = st.session_state["mpl_df"].copy()
+                preview_df = preview_df.merge(
+                    sections_df[["section_id", "section_no"]],
+                    on="section_id",
+                    how="left"
+                )
+
+                # Apply section filter (only affects preview, not stored data)
                 if selected_section != "All":
                     section_no = section_no_map[selected_section]
-                    edit_mpl_df = edit_mpl_df[edit_mpl_df["section_no"].astype(str) == section_no]
+                    preview_df = preview_df[preview_df["section_no"].astype(str) == section_no]
 
-                # Drop section_no from the final DataFrame (for display, edit, download)
-                edit_mpl_df = edit_mpl_df.drop(columns=["section_no"], errors="ignore") 
-                
-                # Display the filtered DataFrame
-                st.dataframe(st.session_state["mpl_df"], use_container_width=True, hide_index=True)
+                # Drop section_no before preview
+                preview_df = preview_df.drop(columns=["section_no"], errors="ignore")
+
+                # Display preview
+                st.dataframe(preview_df, use_container_width=True, hide_index=True)
+
                         
                 # Download as Excel for editing
                 buffer = io.BytesIO()

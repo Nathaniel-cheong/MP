@@ -70,9 +70,9 @@ if submit:
                 st.rerun()
             else:
                 # Error handling for wrong password
-                st.session_state["login_error"] = "❌ Incorrect password."
+                st.session_state["login_error"] = "❌ Incorrect details."
                 st.rerun()
         else:
             # Error handling for wrong username/email
-            st.session_state["login_error"] = "❌ Account not found."
+            st.session_state["login_error"] = "❌ Incorrect details."
             st.rerun()

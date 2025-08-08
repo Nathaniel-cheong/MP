@@ -132,6 +132,7 @@ if st.button("Preview Data", disabled=not preview_enabled):
 
 # --- MAIN PROCESSING ---
 if file_state["preview_clicked"] and form_filled:
+    file_state["preview_clicked"] = False
     # Creating PDF_id
     file_state["pdf_id"] = file_state["model"] + "_" + file_state["batch_id"]
 
@@ -170,15 +171,34 @@ if file_state["preview_clicked"] and form_filled:
             total_time = time.time() - start_time
             status.update(label=f"Parts data extraction completed in {total_time:.2f} seconds.", state="complete")
 
-        with st.status("Extracting Images") as status:
+        with st.status("Extracting Images", expanded=True) as status:
             start_time = time.time()
-            # pdf_section extraction (section info + image)
-            file_state["pdf_section_df"] = processor.extract_pdf_section()
-            total_time = time.time() - start_time
-            status.update(label=f"Parts image extraction completed in {total_time:.2f} seconds.", state="complete")
+            
+            try:
+                file_state["pdf_section_df"] = processor.extract_pdf_section()
+                total_time = time.time() - start_time
+                status.update(
+                    label=f"Parts image extraction completed in {total_time:.2f} seconds.",
+                    state="complete"
+                )
 
-    # --- TABLE DISPLAY ---
-    # --- PDF info preview ---
+            except KeyError as e:
+                status.update(
+                    label="Failed to extract section images — missing expected column. Make sure you have selected the correct Brand",
+                    state="error"
+                )
+                st.stop()
+
+            except Exception as e:
+                status.update(
+                    label="An unexpected error occurred during section image extraction. Make sure you have selected the correct Brand",
+                    state="error"
+                )
+                st.stop()
+
+# --- TABLE DISPLAY ---
+# --- PDF info preview ---
+if file_state['preview_loaded']:
     if file_state["pdf_info"] is not None:
         st.divider()
         st.subheader("PDF Information Preview")

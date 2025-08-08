@@ -76,6 +76,34 @@ if st.session_state.account_edit_mode == False:
                             st.success(f"Account {'deactivated' if new_status == 0 else 'activated'}")
                             st.rerun()
 
+                        # Edit Name/Email Button
+                        if st.button("✏️ Edit Name & Email", key=f"edit_btn_{account_key}"):
+                            st.session_state[f"show_edit_input_{account_key}"] = True
+
+                        # Show input fields if editing
+                        if st.session_state.get(f"show_edit_input_{account_key}", False):
+                            new_name = st.text_input("Edit Staff Name", value=row["staff_name"], key=f"name_input_{account_key}")
+                            new_email = st.text_input("Edit Email", value=row["email"], key=f"email_input_{account_key}")
+
+                            if st.button("✅ Confirm Edit", key=f"confirm_edit_{account_key}"):
+                                with engine.begin() as conn:
+                                    conn.execute(
+                                        accounts.update()
+                                        .where(accounts.c.account_id == row["account_id"])
+                                        .values(
+                                            staff_name=new_name,
+                                            email=new_email
+                                        )
+                                    )
+                                st.success("✅ Account details updated.")
+                                del st.session_state[f"show_edit_input_{account_key}"]
+                                st.rerun()
+
+                            if st.button("❌ Cancel", key=f"cancel_edit_{account_key}"):
+                                del st.session_state[f"show_edit_input_{account_key}"]
+                                st.info("Edit cancelled.")
+                                st.rerun()
+
                         # Reset Password button
                         if st.button("🔁 Reset Password", key=f"reset_btn_{account_key}"):
                             st.session_state[f"show_reset_input_{account_key}"] = True
@@ -97,6 +125,10 @@ if st.session_state.account_edit_mode == False:
                                     st.rerun()
                                 else:
                                     st.warning("Password cannot be empty.")
+
+                            if st.button("❌ Cancel", key=f"cancel_reset_{account_key}"):
+                                st.session_state[f"show_reset_input_{account_key}"] = False
+                                st.rerun()
 
                         # Delete Account button (With double confirmation)
                         delete_key = f"delete_{account_key}"
