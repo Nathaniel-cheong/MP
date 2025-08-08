@@ -132,6 +132,7 @@ if st.button("Preview Data", disabled=not preview_enabled):
 
 # --- MAIN PROCESSING ---
 if file_state["preview_clicked"] and form_filled:
+    # Reset flag to prevent extraction from being stuck in a infinite loop after an error
     file_state["preview_clicked"] = False
     # Creating PDF_id
     file_state["pdf_id"] = file_state["model"] + "_" + file_state["batch_id"]
@@ -197,8 +198,9 @@ if file_state["preview_clicked"] and form_filled:
                 st.stop()
 
 # --- TABLE DISPLAY ---
-# --- PDF info preview ---
+# Only show tables if there are no errors
 if file_state['preview_loaded']:
+    # --- PDF info preview ---
     if file_state["pdf_info"] is not None:
         st.divider()
         st.subheader("PDF Information Preview")
