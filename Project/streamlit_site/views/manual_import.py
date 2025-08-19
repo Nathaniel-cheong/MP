@@ -172,7 +172,7 @@ if file_state["preview_clicked"] and form_filled:
             total_time = time.time() - start_time
             status.update(label=f"Parts data extraction completed in {total_time:.2f} seconds.", state="complete")
 
-        with st.status("Extracting Images", expanded=True) as status:
+        with st.status("Extracting Images") as status:
             start_time = time.time()
             
             try:
